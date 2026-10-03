@@ -1,0 +1,221 @@
+Repeat & Reconcile — generated 2026-10-04 04:01:49.783892
+========================================================================
+
+## 1. REPEAT CUSTOMERS (corrected)
+Total unique customers (denominator): 96,096
+Repeat customers (>1 distinct order):  2,997
+Repeat rate:                           3.12%
+
+Distribution of orders per customer:
+  1 order(s): 93,099 customers
+  2 order(s): 2,745 customers
+  3 order(s): 203 customers
+  4 order(s): 30 customers
+  5 order(s): 8 customers
+  6 order(s): 6 customers
+  7 order(s): 3 customers
+  9 order(s): 1 customers
+  17 order(s): 1 customers
+
+Comparison to earlier (incorrect) figure:
+  Incorrect (row count gap): 3,345
+  Correct (this script):     2,997
+  Difference:                348 fewer repeat customers than reported
+
+## 2. MULTI-ITEM ORDERS
+Total orders present in order_items:       98,666
+Orders with exactly 1 item row:            88,863
+Orders with >1 item rows (denominator):    98,666
+Orders with >1 item rows:                  9,803 (9.94% of item orders)
+Max items in one order:                    21
+
+## 3. MULTI-PAYMENT ORDERS
+Total distinct orders in payments:         99,440
+Orders with exactly 1 payment row:         96,479
+Orders with >1 payment rows (denominator): 99,440
+Orders with >1 payment rows:               2,961 (2.98% of paid orders)
+Max payment rows for one order:            29
+
+## 4. ORDERS WITHOUT PAYMENT ROWS
+Total orders:                 99,441
+Orders with a payment row:    99,440
+Orders WITHOUT a payment row: 1
+Sample order_ids: ['bfbd0f9bdef84302105ad712db648a6c']
+
+Their order_status distribution:
+order_status
+delivered    1
+
+## 5. ORDERS WITHOUT REVIEWS
+Total orders:                 99,441
+Orders with at least 1 review:98,673
+Orders WITHOUT any review:    768 (0.77% of orders)
+
+Reminder: average review score is computed over reviewed orders only.
+Unreviewed orders retain NULL score in the fact table (handled in Step 4).
+
+## 6. ADDITIONAL FOREIGN-KEY CHECKS
+Unique customer zips:              14,994
+Unique seller zips:                2,246
+Unique geolocation zips:           19,015
+Customer zips NOT in geolocation:  157
+Seller zips NOT in geolocation:    7
+
+Customer rows that would be dropped by INNER JOIN to geolocation: 278
+  → Geography dimension must use LEFT JOIN to preserve all customers.
+
+## 7. 2018 FLAT-OR-DOWN HYPOTHESIS
+
+Monthly orders (all statuses), 2017-01 through 2018-10:
+month
+2016-09       4
+2016-10     324
+2016-12       1
+2017-01     800
+2017-02    1780
+2017-03    2682
+2017-04    2404
+2017-05    3700
+2017-06    3245
+2017-07    4026
+2017-08    4331
+2017-09    4285
+2017-10    4631
+2017-11    7544
+2017-12    5673
+2018-01    7269
+2018-02    6728
+2018-03    7211
+2018-04    6939
+2018-05    6873
+2018-06    6167
+2018-07    6292
+2018-08    6512
+2018-09      16
+2018-10       4
+
+Monthly orders (in-scope statuses only):
+month
+2016-09       2
+2016-10     293
+2016-12       1
+2017-01     787
+2017-02    1718
+2017-03    2617
+2017-04    2377
+2017-05    3640
+2017-06    3205
+2017-07    3946
+2017-08    4272
+2017-09    4227
+2017-10    4547
+2017-11    7421
+2017-12    5618
+2018-01    7187
+2018-02    6624
+2018-03    7168
+2018-04    6919
+2018-05    6833
+2018-06    6145
+2018-07    6233
+2018-08    6421
+2018-09       1
+
+Monthly GMV (item price only, in-scope orders):
+month
+2016-09        207.86
+2016-10      44507.30
+2016-12         10.90
+2017-01     120098.27
+2017-02     244959.35
+2017-03     368341.32
+2017-04     353842.98
+2017-05     503159.19
+2017-06     429916.61
+2017-07     492287.30
+2017-08     568245.79
+2017-09     621415.91
+2017-10     660179.62
+2017-11    1003862.14
+2017-12     742183.79
+2018-01     945456.29
+2018-02     837895.43
+2018-03     981051.06
+2018-04     993592.98
+2018-05     992871.75
+2018-06     863265.53
+2018-07     878044.27
+2018-08     848860.10
+2018-09        145.00
+
+Monthly GMV (item price only, delivered orders only):
+month
+2016-09       134.97
+2016-10     40325.11
+2016-12        10.90
+2017-01    111798.36
+2017-02    234223.40
+2017-03    359198.85
+2017-04    340669.68
+2017-05    489338.25
+2017-06    421923.37
+2017-07    481604.52
+2017-08    554699.70
+2017-09    607399.67
+2017-10    648247.65
+2017-11    987765.37
+2017-12    726033.19
+2018-01    924645.00
+2018-02    826437.13
+2018-03    953356.25
+2018-04    973534.09
+2018-05    977544.69
+2018-06    856077.86
+2018-07    867953.46
+2018-08    838576.64
+
+Focus — 2018 months, orders (all statuses):
+month
+2018-01    7269
+2018-02    6728
+2018-03    7211
+2018-04    6939
+2018-05    6873
+2018-06    6167
+2018-07    6292
+2018-08    6512
+2018-09      16
+2018-10       4
+
+## 8. PRICE + FREIGHT vs PAYMENTS RECONCILIATION
+In-scope orders in reconciliation:       99,441
+Order totals matching within 1 cent:     97,822 (98.37%)
+Order totals that differ:                1,619 (1.63%)
+
+Sum of order_items (price):              R$ 13,494,400.74
+Sum of order_items (freight):            R$ 2,241,126.29
+Sum of order_items (price + freight):    R$ 15,735,527.03
+Sum of payments (payment_value):         R$ 16,008,872.12
+Total difference (payments − items+frt): R$ 2,838.38
+
+Distribution of differences (top 10 by absolute value):
+                                  item_price_total  freight_total  item_plus_freight  payment_total  difference
+order_id                                                                                                       
+ce6d150fb29ada17d2082f4847107665           1299.00         104.66            1403.66        1586.47      182.81
+6e5fe7366a2e1bfbf3257dba0af1267f            179.19         108.72             287.91         406.92      119.01
+70b742795bc441e94a44a084b6d9ce7a            269.99         196.94             466.93         578.82      111.89
+996c7e73600ad3723e8627ab7bef81e4            559.90          28.00             587.90         664.43       76.53
+70b7e94ea46d3e8b5bc12a50186edaf0            167.88          45.27             213.15         274.84       61.69
+bc2c82b0ef78d2252b6176d1972db7c9            165.00          77.01             242.01         303.02       61.01
+af9ffff2ce6b3defd34fd4c78857a379            395.65          17.52             413.17         466.97       53.80
+262118ce178bb3e4590a3adcf6d62e6b            119.80          57.94             177.74         126.12      -51.62
+bfdb5bbb06458d600a33d61f5f287472            297.00          51.93             348.93         394.36       45.43
+8d9c0dc8d5a2ce804f6b925d8f8e6c1d            209.80          44.65             254.45         293.89       39.44
+
+Cross-check — price only vs payments:
+  Sum of order_items (price only):       R$ 13,494,400.74
+  Sum of payments:                       R$ 16,008,872.12
+  Difference:                            R$ 2,514,471.38
+
+
+Script complete.
