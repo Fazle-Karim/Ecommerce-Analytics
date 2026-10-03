@@ -1,0 +1,208 @@
+Olist Data Profile — generated 2026-10-04 03:19:52.221325
+======================================================================
+
+======================================================================
+TABLE: orders
+File:  olist_orders_dataset.csv
+======================================================================
+Rows:    99,441
+Columns: 8
+Column names: ['order_id', 'customer_id', 'order_status', 'order_purchase_timestamp', 'order_approved_at', 'order_delivered_carrier_date', 'order_delivered_customer_date', 'order_estimated_delivery_date']
+
+Null counts and %:
+                               null_count  null_pct
+order_id                                0      0.00
+customer_id                             0      0.00
+order_status                            0      0.00
+order_purchase_timestamp                0      0.00
+order_approved_at                     160      0.16
+order_delivered_carrier_date         1783      1.79
+order_delivered_customer_date        2965      2.98
+order_estimated_delivery_date           0      0.00
+
+Duplicate full rows: 0
+
+Date columns:
+  order_purchase_timestamp:
+    min: 2016-09-04 21:15:19
+    max: 2018-10-17 17:30:18
+    unparseable: 0
+  order_delivered_carrier_date:
+    min: 2016-10-08 10:34:01
+    max: 2018-09-11 19:48:28
+    unparseable: 0
+  order_delivered_customer_date:
+    min: 2016-10-11 13:46:32
+    max: 2018-10-17 13:22:46
+    unparseable: 0
+  order_estimated_delivery_date:
+    min: 2016-09-30 00:00:00
+    max: 2018-11-12 00:00:00
+    unparseable: 0
+
+======================================================================
+TABLE: order_items
+File:  olist_order_items_dataset.csv
+======================================================================
+Rows:    112,650
+Columns: 7
+Column names: ['order_id', 'order_item_id', 'product_id', 'seller_id', 'shipping_limit_date', 'price', 'freight_value']
+
+Null counts and %:
+                     null_count  null_pct
+order_id                      0       0.0
+order_item_id                 0       0.0
+product_id                    0       0.0
+seller_id                     0       0.0
+shipping_limit_date           0       0.0
+price                         0       0.0
+freight_value                 0       0.0
+
+Duplicate full rows: 0
+
+Date columns:
+  shipping_limit_date:
+    min: 2016-09-19 00:15:34
+    max: 2020-04-09 22:35:08
+    unparseable: 0
+
+======================================================================
+TABLE: payments
+File:  olist_order_payments_dataset.csv
+======================================================================
+Rows:    103,886
+Columns: 5
+Column names: ['order_id', 'payment_sequential', 'payment_type', 'payment_installments', 'payment_value']
+
+Null counts and %:
+                      null_count  null_pct
+order_id                       0       0.0
+payment_sequential             0       0.0
+payment_type                   0       0.0
+payment_installments           0       0.0
+payment_value                  0       0.0
+
+Duplicate full rows: 0
+
+======================================================================
+TABLE: reviews
+File:  olist_order_reviews_dataset.csv
+======================================================================
+Rows:    99,224
+Columns: 7
+Column names: ['review_id', 'order_id', 'review_score', 'review_comment_title', 'review_comment_message', 'review_creation_date', 'review_answer_timestamp']
+
+Null counts and %:
+                         null_count  null_pct
+review_id                         0      0.00
+order_id                          0      0.00
+review_score                      0      0.00
+review_comment_title          87656     88.34
+review_comment_message        58247     58.70
+review_creation_date              0      0.00
+review_answer_timestamp           0      0.00
+
+Duplicate full rows: 0
+
+Date columns:
+  review_creation_date:
+    min: 2016-10-02 00:00:00
+    max: 2018-08-31 00:00:00
+    unparseable: 0
+  review_answer_timestamp:
+    min: 2016-10-07 18:32:28
+    max: 2018-10-29 12:27:35
+    unparseable: 0
+
+======================================================================
+TABLE: customers
+File:  olist_customers_dataset.csv
+======================================================================
+Rows:    99,441
+Columns: 5
+Column names: ['customer_id', 'customer_unique_id', 'customer_zip_code_prefix', 'customer_city', 'customer_state']
+
+Null counts and %:
+                          null_count  null_pct
+customer_id                        0       0.0
+customer_unique_id                 0       0.0
+customer_zip_code_prefix           0       0.0
+customer_city                      0       0.0
+customer_state                     0       0.0
+
+Duplicate full rows: 0
+
+======================================================================
+TABLE: sellers
+File:  olist_sellers_dataset.csv
+======================================================================
+Rows:    3,095
+Columns: 4
+Column names: ['seller_id', 'seller_zip_code_prefix', 'seller_city', 'seller_state']
+
+Null counts and %:
+                        null_count  null_pct
+seller_id                        0       0.0
+seller_zip_code_prefix           0       0.0
+seller_city                      0       0.0
+seller_state                     0       0.0
+
+Duplicate full rows: 0
+
+======================================================================
+TABLE: products
+File:  olist_products_dataset.csv
+======================================================================
+Rows:    32,951
+Columns: 9
+Column names: ['product_id', 'product_category_name', 'product_name_lenght', 'product_description_lenght', 'product_photos_qty', 'product_weight_g', 'product_length_cm', 'product_height_cm', 'product_width_cm']
+
+Null counts and %:
+                            null_count  null_pct
+product_id                           0      0.00
+product_category_name              610      1.85
+product_name_lenght                610      1.85
+product_description_lenght         610      1.85
+product_photos_qty                 610      1.85
+product_weight_g                     2      0.01
+product_length_cm                    2      0.01
+product_height_cm                    2      0.01
+product_width_cm                     2      0.01
+
+Duplicate full rows: 0
+
+======================================================================
+TABLE: geolocation
+File:  olist_geolocation_dataset.csv
+======================================================================
+Rows:    1,000,163
+Columns: 5
+Column names: ['geolocation_zip_code_prefix', 'geolocation_lat', 'geolocation_lng', 'geolocation_city', 'geolocation_state']
+
+Null counts and %:
+                             null_count  null_pct
+geolocation_zip_code_prefix           0       0.0
+geolocation_lat                       0       0.0
+geolocation_lng                       0       0.0
+geolocation_city                      0       0.0
+geolocation_state                     0       0.0
+
+Duplicate full rows: 261,831
+
+======================================================================
+TABLE: category_translation
+File:  product_category_name_translation.csv
+======================================================================
+Rows:    71
+Columns: 2
+Column names: ['product_category_name', 'product_category_name_english']
+
+Null counts and %:
+                               null_count  null_pct
+product_category_name                   0       0.0
+product_category_name_english           0       0.0
+
+Duplicate full rows: 0
+
+
+Profile complete.

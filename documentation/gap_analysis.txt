@@ -1,0 +1,118 @@
+Olist Gap Analysis — generated 2026-10-04 03:27:08.732943
+======================================================================
+
+## 1. CUSTOMER IDENTITY
+Unique customer_id:        99,441
+Unique customer_unique_id: 96,096
+Orders per real customer (avg): 1.03
+
+## 2. PAYMENTS
+Orders with 1 payment row:  96,479
+Orders with >1 payment rows:2,961 (2.98%)
+Max payment rows for one order: 29
+
+Payment type distribution:
+payment_type
+credit_card    76795
+boleto         19784
+voucher         5775
+debit_card      1529
+not_defined        3
+
+## 3. REVIEWS
+Rows in reviews:                    99,224
+Unique review_id:                   98,410
+Duplicate review_id rows:           814
+Unique order_id in reviews:         98,673
+Orders with >1 review:              547
+
+Review score distribution:
+review_score
+1    11424
+2     3151
+3     8179
+4    19142
+5    57328
+
+## 4. ORDER STATUSES
+order_status
+delivered      96478
+shipped         1107
+canceled         625
+unavailable      609
+invoiced         314
+processing       301
+created            5
+approved           2
+
+Status % of total:
+order_status
+delivered      97.02
+shipped         1.11
+canceled        0.63
+unavailable     0.61
+invoiced        0.32
+processing      0.30
+created         0.01
+approved        0.00
+
+## 5. DATE COVERAGE
+Purchase date range: 2016-09-04 21:15:19 → 2018-10-17 17:30:18
+
+Orders per month (top/bottom):
+year_month
+2016-09       4
+2016-10     324
+2016-12       1
+2017-01     800
+2017-02    1780
+2017-03    2682
+2017-04    2404
+2017-05    3700
+2017-06    3245
+2017-07    4026
+2017-08    4331
+2017-09    4285
+2017-10    4631
+2017-11    7544
+2017-12    5673
+2018-01    7269
+2018-02    6728
+2018-03    7211
+2018-04    6939
+2018-05    6873
+2018-06    6167
+2018-07    6292
+2018-08    6512
+2018-09      16
+2018-10       4
+
+## 6. CATEGORIES
+Unique product_category_name in products: 73
+Rows in category_translation:              71
+Categories with no English translation:    2
+  → ['pc_gamer', 'portateis_cozinha_e_preparadores_de_alimentos']
+
+## 7. REFERENTIAL INTEGRITY
+order_items.order_id NOT in orders:       0
+payments.order_id NOT in orders:          0
+reviews.order_id NOT in orders:           0
+orders.customer_id NOT in customers:      0
+order_items.product_id NOT in products:   0
+order_items.seller_id NOT in sellers:     0
+
+## 8. GEOLOCATION
+Total rows:               1,000,163
+Unique zip prefixes:      19,015
+Row reduction after dedup: 1,000,163 → 19,015
+
+## 9. SHIPPING LIMIT DATE ANOMALY
+order_items with shipping_limit_date after 2018-12-31: 4
+
+## 10. BASKET SIZE
+Avg items per order:       1.14
+Max items in one order:    21
+Orders with 1 item:        88,863 (90.1%)
+
+
+Gap analysis complete.
