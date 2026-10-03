@@ -1,0 +1,36 @@
+# ============================================
+# E-commerce Analytics - .gitignore
+# ============================================
+
+# Raw and cleaned data (too large for GitHub)
+data/raw/
+data/cleaned/
+*.csv
+
+# Power BI files (binary, can be 100s of MB)
+*.pbix
+*.pbix.backup
+*.pbit
+
+# Database files
+*.bak
+*.mdf
+*.ldf
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS / Editor junk
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# Secrets
+.env
+*.env
+config.local.*
