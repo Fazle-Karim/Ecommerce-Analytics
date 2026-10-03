@@ -45,6 +45,7 @@ Ecommerce-Analytics/
 ├── data/
 │ ├── raw/ # Kaggle CSVs (git-ignored)
 │ └── cleaned/ # Intermediate cleaned exports (git-ignored)
+├── python/ # Profiling and analysis scripts
 ├── sql/
 │ ├── 01_raw_tables.sql
 │ ├── 02_cleaning.sql
@@ -64,7 +65,7 @@ text
 **Project started:** October 2026
 
 - [x] Step 1 — Business brief, environment setup, directory structure
-- [ ] Step 2 — Data collection & exploration
+- [x] Step 2 — Data collection, profiling, quality log, metric definitions
 - [ ] Step 3 — Load raw CSVs into SQL Server
 - [ ] Step 4 — Write cleaning layer (`02_cleaning.sql`)
 - [ ] Step 5 — Build analytics star schema (`03_analytics_layer.sql`)
@@ -80,16 +81,51 @@ text
 
 **Source:** [Olist Brazilian E-commerce Dataset on Kaggle](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)
 
-~100k orders, 9 relational tables:
+~100k orders across 9 relational tables, 2016–2018:
 `orders`, `order_items`, `payments`, `reviews`, `customers`, `sellers`,
 `products`, `geolocation`, `category_translation`.
 
-**Known data traps to verify in Step 2:**
-- `customer_id` is per-order; `customer_unique_id` identifies the actual person
-  (critical for RFM & retention).
-- Reviews table has duplicate `review_id` values.
-- Payments has multiple rows per order (needs aggregation).
-- Geolocation has ~1M rows but only ~19k unique zip prefixes (needs dedup).
+**Verified data characteristics** (from `documentation/data_quality_log.md`):
+
+- **Repeat customer rate:** 3.12% of 96,096 unique customers
+  (2,997 customers placed more than one order).
+- **Customer identity:** `customer_id` is unique per order;
+  `customer_unique_id` identifies the actual person. All customer-level
+  analysis uses the latter.
+- **Referential integrity:** 100% clean across all 6 core foreign keys.
+- **Multi-payment orders:** 2.98% of 99,440 orders have more than one
+  payment row (max: 29). Payments are aggregated to order level.
+- **Multi-item orders:** 9.94% of 98,666 item-orders have more than one
+  product row.
+- **Reviews:** 814 duplicate `review_id` rows; 547 orders have more than one
+  review; 768 orders (0.77%) have no review. Deduplication keeps the latest
+  review per order.
+- **Order statuses:** 97.02% delivered. GMV scope excludes canceled (625),
+  unavailable (609), and created (5) orders.
+- **Date coverage:** The dataset ramps up through 2016 (329 orders) and
+  tails off in Sept–Oct 2018 (20 orders). Effective analysis window is
+  2017-01 → 2018-08.
+- **Geolocation:** 1,000,163 rows collapse to 19,015 unique zip prefixes
+  (98.1% reduction).
+- **Payment reconciliation:** `SUM(payment_value)` matches
+  `SUM(price + freight_value)` to within **0.018%** across in-scope orders.
+
+See `documentation/data_quality_log.md` for the complete log with
+denominators and script-output sourcing.
+
+---
+
+## Documentation
+
+| File | Purpose |
+|------|---------|
+| `documentation/01_business_questions.md` | The 6 questions driving the report |
+| `documentation/data_quality_log.md` | Full data-quality findings and decisions |
+| `documentation/metric_definitions.md` | Frozen metric definitions (v1.0) |
+| `documentation/decision_log.md` | Running log of modeling decisions |
+| `documentation/gap_analysis.txt` | Raw output of the gap analysis script |
+| `documentation/repeat_and_reconcile.txt` | Raw output of the corrected metrics script |
+| `documentation/data_profile_raw.txt` | Raw output of the profiling script |
 
 ---
 
@@ -104,13 +140,15 @@ _To be filled in as the analysis is completed._
 1. Clone the repo.
 2. Install SQL Server Developer Edition + SSMS.
 3. Download the Olist CSVs from Kaggle into `data/raw/`.
-4. Run `sql/01_raw_tables.sql` to create the database architecture.
-5. Load CSVs into the `raw` schema (BULK INSERT or Import Flat File wizard).
-6. Run `sql/02_cleaning.sql` and `sql/03_analytics_layer.sql`.
-7. Open the `.pbix` in Power BI Desktop and refresh.
+4. Run `python/profile_data.py`, `python/gap_analysis.py`, and
+   `python/repeat_and_reconcile.py` to reproduce the data-quality findings.
+5. Run `sql/01_raw_tables.sql` to create the database architecture.
+6. Load CSVs into the `raw` schema (BULK INSERT or Import Flat File wizard).
+7. Run `sql/02_cleaning.sql` and `sql/03_analytics_layer.sql`.
+8. Open the `.pbix` in Power BI Desktop and refresh.
 
 ---
 
 ## Author
 
-**Fazle Karim** — [LinkedIn](https://www.linkedin.com/in/fazle-karim-b95b0b265/) · [GitHub](https://github.com/Fazle-Karim)
+**Fazle Karim** — [GitHub](https://github.com/Fazle-Karim)
