@@ -1,0 +1,55 @@
+Order funnel — 2026-10-04 04:58:15.520606
+========================================================================
+
+## ORDER FUNNEL
+
+  Step 0 — All orders in dataset:                           99,441
+  Step 1 — In-scope status (exclude canceled/unavail/created):  98,202
+  Step 2 — Within time window 2017-01 to 2018-08:           97,905
+  Step 3 — Have at least one item row:                      97,905
+
+## STEP-BY-STEP DELTAS
+
+  Step 0 → Step 1:  −   1,239 orders  (excluded statuses)
+  Step 1 → Step 2:  −     297 orders  (outside time window)
+  Step 2 → Step 3:  −       0 orders  (no item rows)
+  ───────────────────────────────────────
+  Total reduction:      1,536 orders  (1.54%)
+  Final population:    97,905 orders  (98.46% of raw)
+
+## INDEPENDENT VERIFICATION
+Compare each step to an independently computed count.
+
+  Excluded statuses (recomputed):    1,239  (✅)
+  Outside time window (recomputed):     297  (✅)
+  No item rows (recomputed):             0  (✅)
+
+## BREAKDOWN OF EXCLUDED STATUSES
+
+  order_status
+canceled       625
+unavailable    609
+created          5
+
+## BREAKDOWN OF ORDERS OUTSIDE WINDOW
+
+  month
+2016-09      2
+2016-10    293
+2016-12      1
+2018-09      1
+
+## ORDERS WITH NO ITEM ROWS (in-scope, in-window)
+
+  Total: 0
+
+  Status breakdown:
+  Series([], )
+
+## FINAL ANALYTIC POPULATION
+
+  97,905 orders  — this is the denominator for GMV, Order Count, AOV,
+                    Items per Order, and all customer-level metrics.
+
+
+Funnel complete.

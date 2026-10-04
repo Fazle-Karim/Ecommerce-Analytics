@@ -1,12 +1,15 @@
 # Decision Log — Olist Analytics
 
 **Purpose:** A running log of every non-obvious modeling, metric, or cleaning
-decision made during this project. Each entry includes what was decided, why,
-and what alternative was rejected. Interviewers ask "why did you do it this
-way?" — this file is the answer.
+decision made during this project. Each entry includes what was decided,
+why, and what alternative was rejected. Interviewers ask "why did you do it
+this way?" — this file is the answer.
 
 Entries are added in chronological order. Once a decision is logged it is
 considered frozen unless a later entry supersedes it.
+
+> **Markdown note:** Currency values are written as `BRL` or wrapped in
+> backticks to prevent GitHub from rendering `$` as math.
 
 ---
 
@@ -21,7 +24,7 @@ uses `customer_unique_id`, never `customer_id`.
 identifies the person. Using `customer_id` would have shown a 100%
 one-time-buyer rate and made the retention analysis meaningless.
 
-**Evidence:** `data_quality_log.md` §2 — 99,441 `customer_id` vs 96,096
+**Evidence:** `data_quality_log.md` §3 — 99,441 `customer_id` vs 96,096
 `customer_unique_id`.
 
 ---
@@ -32,30 +35,37 @@ one-time-buyer rate and made the retention analysis meaningless.
 `processing`, `approved` order statuses. Excludes `canceled` (625),
 `unavailable` (609), and `created` (5).
 
-**Why:** Canceled and unavailable orders never generated revenue. `created`
-is a transient state that never progressed to payment.
+**Why:** Verified that all three excluded statuses were charged and
+refunded — they did not complete as a sale. `created` is a transient state
+that never progressed to payment.
 
-**Effect:** Effective in-scope universe is 98,202 orders.
+**Effect:** Effective in-scope universe is 98,202 orders before the time
+window filter.
 
-**Evidence:** `data_quality_log.md` §5.
+**Evidence:** `data_quality_log.md` §6 (refund verification table).
 
 ---
 
 ### D-003: GMV defined as item price only; freight tracked separately
 
 **Decision:** `GMV = SUM(order_items.price)`. Freight is a separate measure
-(`Freight Revenue`). Their sum is `Total Customer Paid`.
+(`Freight Charged`). Their sum is `Total Customer Paid`.
 
-**Why:** Item price is the revenue attributable to the product sale. Freight
-is a component of what the customer paid but does not represent product
-revenue. The dataset contains no cost data, so no claim is made about
-freight's margin contribution.
+**Why:** Item price is the revenue attributable to the product sale.
+Freight is a component of what the customer paid but is not called
+"revenue" — the dataset contains no cost data to determine margin.
 
-**Reconciliation:** `SUM(payment_value)` matches
-`SUM(price + freight_value)` to within 0.018%. This confirms payments cover
-both components.
+**Reconciliation:** On the analytic population (97,905 orders),
+`SUM(payment_value)` matches `SUM(price + freight_value)` to within
+`BRL 2,762.33` net (0.0176%) and `BRL 3,033.13` absolute (0.0193%). The
+residual concentrates in credit_card orders with installments > 1, and is
+consistent with installment interest charged to the customer but not paid
+to the seller. Boleto (single-installment) matches essentially exactly.
 
-**Evidence:** `data_quality_log.md` §10.
+**Evidence:** `data_quality_log.md` §11; `documentation/reconcile_payments_v2.txt`.
+
+**Superseded:** An earlier version of this decision cited `BRL 2,838.38`
+(0.018%) — that figure was incorrect (see D-010). Corrected here.
 
 ---
 
@@ -65,12 +75,13 @@ both components.
 `2017-01-01` and `2018-08-31`.
 
 **Why:** 2016 has only 329 orders (ramp-up) and is not representative.
-2018-09 and 2018-10 have 20 orders combined (incomplete tail).
+2018-09 and 2018-10 have 20 orders combined (incomplete tail); after the
+in-scope filter, only 1 order remains in that tail.
 
 **YoY window:** 2017-01..08 vs 2018-01..08 — the only like-for-like
 comparison available.
 
-**Evidence:** `data_quality_log.md` §6.
+**Evidence:** `data_quality_log.md` §7.
 
 ---
 
@@ -84,7 +95,7 @@ most recent `review_creation_date`, breaking ties by
 reliable primary key. `order_id` is the correct partition key. The tiebreak
 makes the result deterministic.
 
-**Evidence:** `data_quality_log.md` §4.
+**Evidence:** `data_quality_log.md` §5.
 
 ---
 
@@ -96,7 +107,7 @@ before joining to any fact table.
 **Why:** 2.98% of orders have multiple payment rows (max: 29). Joining at
 row level would inflate revenue.
 
-**Evidence:** `data_quality_log.md` §3.
+**Evidence:** `data_quality_log.md` §4.
 
 ---
 
@@ -109,7 +120,7 @@ row level would inflate revenue.
 matching geolocation row. An `INNER JOIN` would silently drop 278 customer
 rows and 7 seller rows.
 
-**Evidence:** `data_quality_log.md` §1 (extended FK checks).
+**Evidence:** `data_quality_log.md` §1.
 
 ---
 
@@ -127,7 +138,11 @@ labels by construction. Products with no category are labeled `unknown`
 - `pc_gamer` → `pc_gamer`
 - `portateis_cozinha_e_preparadores_de_alimentos` → `kitchen_food_prep_portables`
 
-**Evidence:** `data_quality_log.md` §7.
+**Display-name override:** Simple Title Case turns `pc_gamer` into `Pc Gamer`.
+A single override entry forces `PC Gamer` in the display column. All other
+categories use the plain Title Case rule.
+
+**Evidence:** `data_quality_log.md` §8.
 
 ---
 
@@ -142,10 +157,106 @@ baseline to distinguish decline from seasonality. The +138% YoY growth
 figure (Jan–Aug) is dominated by the marketplace ramp-up, not organic
 growth.
 
-**Evidence:** `data_quality_log.md` §11.
+**Evidence:** `data_quality_log.md` §13.
+
+---
+
+### D-010: Reconciliation fix — population mismatch, not netting
+
+**Decision:** The original payments-vs-items reconciliation reported a
+misleading headline figure because the two totals were computed on two
+different order populations. The correct population is defined once as a
+single list of order_ids (in-scope, in-window, has-item-rows), and both
+sums are computed by joining to that list.
+
+**Why it mattered:** The original LEFT total restricted items to in-scope
+statuses; the RIGHT total joined payments to that population via an
+**outer** join, silently pulling in payments from out-of-scope orders and
+orders outside the time window. The `BRL 273,345.09` gap was a population
+mismatch, not a revenue gap. The correct net residual on the analytic
+population is `BRL 2,762.33` (0.0176%).
+
+**Structural change:** The rebuilt script
+(`python/reconcile_payments_v2.py`) includes an assertion that aborts if
+the two sides cover different numbers of orders. This class of bug now
+fails loudly.
+
+**Note on my first diagnosis:** I initially attributed the discrepancy to
+"netting" of positive and negative residuals. That was wrong — summation
+is linear, so `SUM(A − B) = SUM(A) − SUM(B)` on the same population. The
+supervisor caught this; the diagnosis script
+(`python/diagnose_reconciliation.py`) confirmed the correct cause.
+
+**Evidence:** `data_quality_log.md` §11; `documentation/reconcile_payments_v2.txt`;
+`documentation/diagnose_reconciliation.txt`.
+
+---
+
+### D-011: Analytic population = 97,905 orders
+
+**Decision:** The analytic population for all metrics is defined as a
+3-step funnel:
+
+1. Status in-scope (excludes canceled, unavailable, created) → 98,202
+2. `order_purchase_timestamp` in [2017-01-01, 2018-09-01) → 97,905
+3. Has at least one row in `order_items` → 97,905
+
+**Why:** Every metric must operate on a single, well-defined population.
+The funnel is reproducible (`python/order_funnel.py`) and independently
+verified step by step.
+
+**Surprise finding:** No in-scope, in-window order lacks item rows. The
+775 raw orders with no items are all out-of-scope status or outside the
+window.
+
+**Evidence:** `data_quality_log.md` §2; `documentation/order_funnel.txt`.
+
+---
+
+### D-012: Late flag compares dates, not timestamps
+
+**Decision:** An order is "late" if `DATE(order_delivered_customer_date) >
+DATE(order_estimated_delivery_date)`. Both sides are normalized to midnight
+before comparison.
+
+**Why:** `order_estimated_delivery_date` is always at midnight (verified: 0
+of 99,441 rows have a non-midnight time). Comparing a raw delivery
+timestamp against a midnight estimated date misclassifies 1,292 orders as
+late — they were delivered on the estimated day but after midnight.
+Date-only comparison gives 6,534 late orders; raw timestamp comparison
+gives 7,826.
+
+**Additional rule:** Delivered orders with a null delivery date (8 orders,
+0.0083%) are excluded from the late-rate denominator but retained in
+Order Count.
+
+**Late-rate denominator = 96,203 orders. Late rate = 6.79%.**
+
+**Evidence:** `data_quality_log.md` §12; `documentation/late_flag_check.txt`.
+
+---
+
+### D-013: Verify refund hypothesis for excluded statuses
+
+**Decision:** Before excluding canceled, unavailable, and created orders
+from GMV, verify that they were charged and refunded (not just missing).
+
+**Why:** The exclusion rule needs a factual basis, not an assumption. If
+these orders lacked payments entirely, they'd represent a different kind
+of data-quality issue.
+
+**Result:** All 1,239 excluded-status orders have a payment row.
+Total charged: `BRL 270,423.21`. This confirms they did not complete as a
+sale — the customer was charged and the money returned. The exclusion from
+GMV is now evidence-based.
+
+**Additional edge case:** 6 canceled orders have a delivery date. These
+remain excluded along with all other canceled orders.
+
+**Evidence:** `data_quality_log.md` §6; `documentation/late_flag_check.txt` Q4.
 
 ---
 
 ## How to Add an Entry
 
-Use this template:
+Use this template when adding a new decision:

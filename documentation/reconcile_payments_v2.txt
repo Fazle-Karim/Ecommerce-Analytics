@@ -1,0 +1,99 @@
+Payments reconciliation v2 — 2026-10-04 04:56:07.022511
+========================================================================
+
+## STEP 1 — DEFINE THE POPULATION (single source of truth)
+
+Population definition:
+  Filter 1 — status IN ['approved', 'delivered', 'invoiced', 'processing', 'shipped']
+  Filter 2 — purchase_dt in [2017-01-01, 2018-09-01)
+  Filter 3 — order has at least one item row
+
+  Population size: 97,905 orders
+
+## STEP 2 — AGGREGATE BOTH SIDES TO ORDER LEVEL (from the same list)
+  items_by_order:    97,905 orders
+  payments_by_order: 97,905 orders
+
+## STEP 3 — ASSERTION (fail loudly if populations disagree)
+✅ Both sides cover the same 97,905 orders.
+
+## STEP 4 — RESIDUALS
+
+  SUM(payment_total):        BRL   15,686,469.07
+  SUM(item_total):           BRL   15,683,706.74
+  NET difference:            BRL        2,762.33
+  SUM of absolute diffs:     BRL        3,033.13
+  NET diff % of payments:    0.0176%
+  ABS diff % of payments:    0.0193%
+
+## STEP 5 — DISTRIBUTION OF RESIDUALS
+
+  Orders with |diff| < 0.01 BRL: 97,534 (99.62%)
+  Orders with |diff| >= 0.01:    371
+
+  Percentiles of absolute residual (BRL):
+    50th (median): 0.0000
+    75th:          0.0000
+    90th:          0.0000
+    95th:          0.0000
+    99th:          0.0000
+    100th (max):   182.8100
+
+## STEP 6 — BREAKDOWN
+
+By payment_type mix (sorted by abs_diff):
+                        orders  net_diff  abs_diff
+types                                             
+credit_card              73181   2797.02   2962.68
+debit_card                1512    -51.99     52.01
+credit_card|voucher       2205     17.44     17.56
+boleto                   19477     -0.13      0.87
+voucher                   1529     -0.01      0.01
+credit_card|debit_card       1      0.00      0.00
+
+By installment count (sorted by abs_diff):
+              orders      net_diff      abs_diff
+installments                                    
+10              5194  9.198000e+02  9.205600e+02
+12               131  3.476200e+02  3.476400e+02
+6               3852  2.616900e+02  3.055300e+02
+8               4209  2.402900e+02  2.404300e+02
+5               5149  1.891600e+02  1.893800e+02
+7               1594  1.725900e+02  1.725900e+02
+4               6965  1.236500e+02  1.518300e+02
+3              10273  8.607000e+01  1.289100e+02
+20                17  1.118900e+02  1.118900e+02
+9                627  1.083500e+02  1.084500e+02
+1              47492 -7.038000e+01  8.396000e+01
+11                22  6.856000e+01  6.856000e+01
+15                74  6.659000e+01  6.661000e+01
+24                18  6.168000e+01  6.170000e+01
+21                 3  6.101000e+01  6.101000e+01
+2              12212  1.376000e+01  1.408000e+01
+18                27 -1.705303e-13  3.410605e-13
+13                15 -2.842171e-14  8.526513e-14
+14                15 -5.684342e-14  5.684342e-14
+17                 7 -5.684342e-14  5.684342e-14
+16                 5 -2.842171e-14  2.842171e-14
+22                 1  0.000000e+00  0.000000e+00
+23                 1  0.000000e+00  0.000000e+00
+0                  2  0.000000e+00  0.000000e+00
+
+## STEP 7 — INTERPRETATION
+
+  The NET residual of BRL 2,762.33 is 0.0176% of total
+  payments on the correct population (97,905 orders).
+
+  The ABSOLUTE residual of BRL 3,033.13 is 0.0193%
+  of total payments — the aggregate netting is nearly complete, but per-order
+  residuals exist that partially offset.
+
+  Almost all residual concentrates in credit_card orders with installments > 1,
+  consistent with installment interest charged to the customer but not paid to
+  the seller. Boleto (single-installment bank slips) matches essentially exactly.
+
+  Conclusion: the reconciliation is clean at the aggregate level. Residuals are
+  finance-related, not data-quality errors.
+
+
+Reconciliation v2 complete.

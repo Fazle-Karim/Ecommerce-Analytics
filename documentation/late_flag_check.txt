@@ -1,0 +1,65 @@
+Late-flag assumptions check — 2026-10-04 04:59:49.262355
+========================================================================
+
+## Q1 — IS order_estimated_delivery_date ALWAYS AT MIDNIGHT?
+
+  Rows with non-midnight estimated date: 0
+  Rows with estimated date present:      99,441
+  → Estimated date is ALWAYS at midnight
+
+## Q2 — RAW TIMESTAMP vs DATE COMPARISON
+
+  Delivered orders with both dates present: 96,470
+  Late via raw timestamp comparison:        7,826  (8.11%)
+  Late via date-only comparison:            6,534  (6.77%)
+  Difference:                               1,292
+  → DATE comparison is correct — raw timestamp comparison overcounts by 1,292.
+
+  Sample of misclassified rows (raw ≠ date):
+                        order_id        delivered_dt estimated_dt
+8563039e855156e48fccee4d611a3196 2018-03-20 00:59:25   2018-03-20
+1d067305b599c1e0dceb3864056ea527 2018-03-09 21:52:36   2018-03-09
+c82a457d646f77c8f151e12a3e517ed2 2018-08-15 15:02:09   2018-08-15
+2c3a5e5f5bc3ae78ed5748461e62d47d 2018-02-06 15:49:01   2018-02-06
+6cc4eb51469dec50a6130fe1cd07b7f9 2017-05-19 15:55:47   2017-05-19
+
+## Q3 — DELIVERED ORDERS WITH NULL DELIVERY DATE
+
+  Total delivered orders:           96,478
+  Delivered with null delivery date:8  (0.0083%)
+
+  → These must be EXCLUDED from late-rate denominator.
+    They stay in Order Count but not in Late Rate.
+
+## Q4 — CANCELED / UNAVAILABLE: DELIVERY DATE OR PAYMENT?
+
+  Status: canceled
+    Total orders:                625
+    With a delivery date:        6  (0.96%)
+    With a payment row:          625  (100.00%)
+    Total payments on these:     BRL 143,255.60
+
+  Status: unavailable
+    Total orders:                609
+    With a delivery date:        0  (0.00%)
+    With a payment row:          609  (100.00%)
+    Total payments on these:     BRL 126,479.51
+
+  Status: created
+    Total orders:                5
+    With a delivery date:        0  (0.00%)
+    With a payment row:          5  (100.00%)
+    Total payments on these:     BRL 688.10
+
+  Canceled orders with BOTH delivery date AND payment: 6
+
+## Q5 — PROPOSED LATE-RATE DENOMINATOR
+
+  In-scope, in-window, delivered:              96,211
+  Delivered with non-null delivery date:       96,203
+  → Late Rate denominator: 96,203
+  Late orders:                                 6,531
+  Late Rate:                                   6.79%
+
+
+Late-flag check complete.
