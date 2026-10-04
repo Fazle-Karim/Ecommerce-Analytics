@@ -1,3 +1,4 @@
+
 """
 control_totals.py
 Purpose: Compute every pinned control total from the raw CSVs and write
@@ -51,20 +52,25 @@ WINDOW_END   = pd.Timestamp("2018-09-01")
 # RAW-LEVEL values (for Step 3 load verification)
 # ------------------------------------------------------------------
 raw_level = {
-    "orders_row_count":               int(len(orders)),
-    "order_items_row_count":          int(len(items)),
-    "payments_row_count":             int(len(payments)),
-    "reviews_row_count":              int(len(reviews)),
-    "customers_row_count":            int(len(customers)),
-    "sellers_row_count":              int(len(sellers)),
-    "products_row_count":             int(len(products)),
-    "geolocation_row_count":          int(len(geolocation)),
-    "category_translation_row_count": int(len(trans)),
-    "orders_distinct_order_id":       int(orders["order_id"].nunique()),
-    "customers_distinct_unique_id":   int(customers["customer_unique_id"].nunique()),
-    "raw_sum_price":                  round(float(items["price"].sum()), 2),
-    "raw_sum_freight_value":          round(float(items["freight_value"].sum()), 2),
-    "raw_sum_payment_value":          round(float(payments["payment_value"].sum()), 2),
+    "orders_row_count":                int(len(orders)),
+    "order_items_row_count":           int(len(items)),
+    "payments_row_count":              int(len(payments)),
+    "reviews_row_count":               int(len(reviews)),
+    "customers_row_count":             int(len(customers)),
+    "sellers_row_count":               int(len(sellers)),
+    "products_row_count":              int(len(products)),
+    "geolocation_row_count":           int(len(geolocation)),
+    "category_translation_row_count":  int(len(trans)),
+    "orders_distinct_order_id":        int(orders["order_id"].nunique()),
+    "customers_distinct_unique_id":    int(customers["customer_unique_id"].nunique()),
+    "sellers_distinct_seller_id":      int(sellers["seller_id"].nunique()),
+    "products_distinct_product_id":    int(products["product_id"].nunique()),
+    "order_items_distinct_order_item": int(
+        items[["order_id", "order_item_id"]].drop_duplicates().shape[0]
+    ),
+    "raw_sum_price":                   round(float(items["price"].sum()), 2),
+    "raw_sum_freight_value":           round(float(items["freight_value"].sum()), 2),
+    "raw_sum_payment_value":           round(float(payments["payment_value"].sum()), 2),
 }
 
 # ------------------------------------------------------------------
@@ -154,6 +160,10 @@ per_person_pop = pop_orders_cust.groupby("customer_unique_id")["order_id"].nuniq
 
 unique_customers_pop = int(per_person_pop.shape[0])
 repeat_customers_pop = int((per_person_pop > 1).sum())
+repeat_rate_pop      = (
+    round(repeat_customers_pop / unique_customers_pop * 100, 2)
+    if unique_customers_pop > 0 else 0.0
+)
 
 # ------------------------------------------------------------------
 # Late rate (in-window, in-scope, delivered, non-null delivery date)
@@ -245,11 +255,17 @@ late_pop_ids = set(late_pop["order_id"])
 late_pop_reviews = reviews_dedup[reviews_dedup["order_id"].isin(late_pop_ids)].merge(
     late_pop[["order_id", "late_flag"]], on="order_id", how="left"
 )
+late_reviews    = late_pop_reviews[late_pop_reviews["late_flag"] == 1]
+on_time_reviews = late_pop_reviews[late_pop_reviews["late_flag"] == 0]
+
+late_review_count    = int(len(late_reviews))
+on_time_review_count = int(len(on_time_reviews))
+
 avg_review_score_delivered_in_window_late = round(
-    float(late_pop_reviews[late_pop_reviews["late_flag"] == 1]["review_score"].mean()), 4
+    float(late_reviews["review_score"].mean()), 4
 )
 avg_review_score_delivered_in_window_on_time = round(
-    float(late_pop_reviews[late_pop_reviews["late_flag"] == 0]["review_score"].mean()), 4
+    float(on_time_reviews["review_score"].mean()), 4
 )
 late_vs_on_time_gap_delivered_in_window = round(
     avg_review_score_delivered_in_window_late
@@ -266,10 +282,24 @@ cat_gmv = (
     .sort_values(ascending=False)
     .head(10)
 )
-top_categories = [
-    {"category_name": str(cat), "gmv": float(val)}
-    for cat, val in cat_gmv.items()
-]
+
+trans_map = dict(zip(trans["product_category_name"], trans["product_category_name_english"]))
+
+top_categories = []
+for cat, val in cat_gmv.items():
+    cat_str = str(cat) if pd.notna(cat) else "unknown"
+    english = trans_map.get(cat_str, None)
+    if english is None and cat_str == "pc_gamer":
+        english = "pc_gamer"
+    if english is None and cat_str == "portateis_cozinha_e_preparadores_de_alimentos":
+        english = "kitchen_food_prep_portables"
+    if english is None and cat_str == "unknown":
+        english = "unknown"
+    top_categories.append({
+        "category_name_pt": cat_str,
+        "category_name_en": english if english is not None else "NO_TRANSLATION",
+        "gmv": float(val),
+    })
 
 # ------------------------------------------------------------------
 # Assemble JSON
@@ -308,6 +338,7 @@ totals = {
         "repeat_rate_in_scope_pct":       repeat_rate_scope,
         "unique_customers_in_population": unique_customers_pop,
         "repeat_customers_in_population": repeat_customers_pop,
+        "repeat_rate_in_population_pct":  repeat_rate_pop,
     },
     "late_rate": {
         "denominator":   n_late_denominator,
@@ -325,6 +356,10 @@ totals = {
             avg_review_score_delivered_in_window_on_time,
         "late_vs_on_time_gap_delivered_in_window":
             late_vs_on_time_gap_delivered_in_window,
+        "late_review_count_delivered_in_window":
+            late_review_count,
+        "on_time_review_count_delivered_in_window":
+            on_time_review_count,
     },
     "excluded_statuses": {
         "payments_total": excluded_payments_total,
@@ -360,7 +395,7 @@ def fmt_value(v):
     if isinstance(v, float):
         if v == int(v):
             return f"{int(v):,}"
-        return f"{v:,.2f}"
+        return f"{v:,.4f}".rstrip("0").rstrip(".")
     if isinstance(v, int):
         return f"{v:,}"
     return str(v)
@@ -385,6 +420,9 @@ section("Raw-Level Values (Step 3 load verification)", [
     ("category_translation row count",  raw_level["category_translation_row_count"]),
     ("distinct orders.order_id",        raw_level["orders_distinct_order_id"]),
     ("distinct customers.customer_unique_id", raw_level["customers_distinct_unique_id"]),
+    ("distinct sellers.seller_id",      raw_level["sellers_distinct_seller_id"]),
+    ("distinct products.product_id",    raw_level["products_distinct_product_id"]),
+    ("distinct (order_id, order_item_id)", raw_level["order_items_distinct_order_item"]),
     ("SUM(items.price) raw",            f"BRL {raw_level['raw_sum_price']:,.2f}"),
     ("SUM(items.freight_value) raw",    f"BRL {raw_level['raw_sum_freight_value']:,.2f}"),
     ("SUM(payments.payment_value) raw", f"BRL {raw_level['raw_sum_payment_value']:,.2f}"),
@@ -424,6 +462,7 @@ section("Customers", [
     ("Repeat rate % (in-scope)",                repeat_rate_scope),
     ("Unique customers (analytic population)",  unique_customers_pop),
     ("Repeat customers (analytic population)",  repeat_customers_pop),
+    ("Repeat rate % (analytic population)",     repeat_rate_pop),
 ])
 
 section("Late Rate", [
@@ -443,6 +482,10 @@ section("Reviews (populations stated in key names)", [
         avg_review_score_delivered_in_window_on_time),
     ("Late vs on-time gap (delivered-in-window)",
         late_vs_on_time_gap_delivered_in_window),
+    ("Late review group size (delivered-in-window)",
+        late_review_count),
+    ("On-time review group size (delivered-in-window)",
+        on_time_review_count),
 ])
 
 section("Excluded Statuses", [
@@ -464,10 +507,10 @@ for month in sorted(monthly.keys()):
 md.append("")
 
 md.append("## Top 10 Categories by GMV (analytic population)\n")
-md.append("| Rank | Category | GMV |")
-md.append("|-----:|----------|----:|")
+md.append("| Rank | Portuguese name | English name | GMV |")
+md.append("|-----:|-----------------|--------------|----:|")
 for i, entry in enumerate(top_categories, start=1):
-    md.append(f"| {i} | `{entry['category_name']}` | `BRL {entry['gmv']:,.2f}` |")
+    md.append(f"| {i} | `{entry['category_name_pt']}` | `{entry['category_name_en']}` | `BRL {entry['gmv']:,.2f}` |")
 md.append("")
 
 OUT_MD.write_text("\n".join(md), encoding="utf-8")

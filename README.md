@@ -9,7 +9,9 @@ proper star-schema model.
 
 ## Business Context
 
-**Audience:** Executive Leadership Team — Head of Sales & Marketing Manager.
+**Primary audience:** Head of Sales and Marketing.
+
+**Secondary audience:** Executive Leadership Team.
 
 **Goal:** Answer 6 core business questions about revenue performance, product
 & regional growth, customer value, retention, logistics quality, and seller
@@ -35,7 +37,8 @@ performance — turning raw transactional data into actionable insights.
 - **Database:** SQL Server (Developer Edition)
 - **ETL:** SQL (raw → clean → analytics layered pipeline)
 - **BI:** Power BI Desktop
-- **Modeling:** DAX (30+ measures)
+- **Modeling:** DAX covering core KPIs, time intelligence, RFM segmentation,
+  and cohort retention
 - **Version control:** Git + GitHub
 
 ---
@@ -86,7 +89,7 @@ Ecommerce-Analytics/
 - [ ] Step 7 — Write DAX measures (core, time intelligence, RFM, cohorts)
 - [ ] Step 8 — Design multi-page report
 - [ ] Step 9 — Optimize & apply row-level security
-- [ ] Step 10 — Publish, document, and present
+- [ ] Step 10 — Package and present
 
 ---
 
@@ -107,16 +110,22 @@ Ecommerce-Analytics/
 - **Customer identity:** `customer_id` is unique per order;
   `customer_unique_id` identifies the actual person. All customer-level
   analysis uses the latter.
-- **Referential integrity:** 100% clean across all 6 core foreign keys.
+- **Core referential integrity:** 100% clean across all 6 core foreign
+  keys (order_items ↔ orders, payments ↔ orders, reviews ↔ orders,
+  orders ↔ customers, order_items ↔ products, order_items ↔ sellers).
+  However, 157 customer zip prefixes (278 customer rows) and 7 seller zip
+  prefixes have no match in the geolocation table, so geography joins use
+  `LEFT JOIN`.
 - **Multi-payment orders:** 2.98% of 99,440 orders have more than one
-  payment row (max: 29). Payments are aggregated to order level.
-- **Multi-item orders:** 9.94% of 98,666 item-orders have more than one
-  product row.
-- **Reviews:** 814 duplicate `review_id` rows; 547 orders have more than one
-  review; 768 orders (0.77%) have no review. Deduplication keeps the latest
-  review per order.
-- **Order statuses:** 97.02% delivered. GMV scope excludes canceled (625),
-  unavailable (609), and created (5) orders.
+  payment row (max: 29 payment rows on a single order). Payments are
+  aggregated to order level.
+- **Multi-item orders:** 9.94% of 98,666 orders that have item rows
+  contain more than one product row.
+- **Reviews:** 814 duplicate `review_id` rows; 547 orders have more than
+  one review; 768 of 99,441 orders (0.77%) have no review.
+  Deduplication keeps the latest review per order.
+- **Order statuses:** 97.02% of 99,441 orders are delivered. GMV scope
+  excludes canceled (625), unavailable (609), and created (5) orders.
 - **Date coverage:** The dataset ramps up through 2016 (329 orders) and
   tails off in Sept–Oct 2018 (20 orders). Effective analysis window is
   2017-01 → 2018-08.
@@ -127,7 +136,7 @@ Ecommerce-Analytics/
   analytic population.
 
 See `documentation/data_quality_log.md` for the complete log with
-denominators and script-output sourcing. All numbers are pinned in
+denominators and script-output sourcing. Key figures are pinned in
 `documentation/control_totals.json`.
 
 ---

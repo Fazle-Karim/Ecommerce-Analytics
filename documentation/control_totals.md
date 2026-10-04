@@ -1,6 +1,6 @@
 # Control Totals — Olist Analytics
 
-**Generated:** 2026-10-04 07:50:10.724218
+**Generated:** 2026-10-04 08:11:39.466793
 **Source:** `python/control_totals.py` (re-runnable)
 **JSON:** `documentation/control_totals.json`
 
@@ -25,6 +25,9 @@
 | category_translation row count | `71` |
 | distinct orders.order_id | `99,441` |
 | distinct customers.customer_unique_id | `96,096` |
+| distinct sellers.seller_id | `3,095` |
+| distinct products.product_id | `32,951` |
+| distinct (order_id, order_item_id) | `112,650` |
 | SUM(items.price) raw | `BRL 13,591,643.70` |
 | SUM(items.freight_value) raw | `BRL 2,251,909.54` |
 | SUM(payments.payment_value) raw | `BRL 16,008,872.12` |
@@ -72,6 +75,7 @@
 | Repeat rate % (in-scope) | `3.04` |
 | Unique customers (analytic population) | `94,703` |
 | Repeat customers (analytic population) | `2,874` |
+| Repeat rate % (analytic population) | `3.03` |
 
 ## Late Rate
 
@@ -86,10 +90,12 @@
 | Metric | Value |
 |--------|------:|
 | Orders with deduped review (all orders) | `98,673` |
-| Avg review score (all orders) | `4.09` |
-| Avg review score (delivered-in-window, late) | `2.27` |
-| Avg review score (delivered-in-window, on-time) | `4.29` |
-| Late vs on-time gap (delivered-in-window) | `-2.02` |
+| Avg review score (all orders) | `4.0863` |
+| Avg review score (delivered-in-window, late) | `2.2709` |
+| Avg review score (delivered-in-window, on-time) | `4.291` |
+| Late vs on-time gap (delivered-in-window) | `-2.0201` |
+| Late review group size (delivered-in-window) | `6,378` |
+| On-time review group size (delivered-in-window) | `89,182` |
 
 ## Excluded Statuses
 
@@ -132,15 +138,15 @@
 
 ## Top 10 Categories by GMV (analytic population)
 
-| Rank | Category | GMV |
-|-----:|----------|----:|
-| 1 | `beleza_saude` | `BRL 1,251,145.54` |
-| 2 | `relogios_presentes` | `BRL 1,194,824.97` |
-| 3 | `cama_mesa_banho` | `BRL 1,035,485.07` |
-| 4 | `esporte_lazer` | `BRL 977,728.77` |
-| 5 | `informatica_acessorios` | `BRL 902,922.70` |
-| 6 | `moveis_decoracao` | `BRL 721,584.27` |
-| 7 | `utilidades_domesticas` | `BRL 625,538.73` |
-| 8 | `cool_stuff` | `BRL 619,724.39` |
-| 9 | `automotivo` | `BRL 585,177.48` |
-| 10 | `ferramentas_jardim` | `BRL 479,650.06` |
+| Rank | Portuguese name | English name | GMV |
+|-----:|-----------------|--------------|----:|
+| 1 | `beleza_saude` | `health_beauty` | `BRL 1,251,145.54` |
+| 2 | `relogios_presentes` | `watches_gifts` | `BRL 1,194,824.97` |
+| 3 | `cama_mesa_banho` | `bed_bath_table` | `BRL 1,035,485.07` |
+| 4 | `esporte_lazer` | `sports_leisure` | `BRL 977,728.77` |
+| 5 | `informatica_acessorios` | `computers_accessories` | `BRL 902,922.70` |
+| 6 | `moveis_decoracao` | `furniture_decor` | `BRL 721,584.27` |
+| 7 | `utilidades_domesticas` | `housewares` | `BRL 625,538.73` |
+| 8 | `cool_stuff` | `cool_stuff` | `BRL 619,724.39` |
+| 9 | `automotivo` | `auto` | `BRL 585,177.48` |
+| 10 | `ferramentas_jardim` | `garden_tools` | `BRL 479,650.06` |

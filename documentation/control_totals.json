@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-04 07:50:10.724218",
+  "generated_at": "2026-10-04 08:11:39.466793",
   "raw_level": {
     "orders_row_count": 99441,
     "order_items_row_count": 112650,
@@ -12,6 +12,9 @@
     "category_translation_row_count": 71,
     "orders_distinct_order_id": 99441,
     "customers_distinct_unique_id": 96096,
+    "sellers_distinct_seller_id": 3095,
+    "products_distinct_product_id": 32951,
+    "order_items_distinct_order_item": 112650,
     "raw_sum_price": 13591643.7,
     "raw_sum_freight_value": 2251909.54,
     "raw_sum_payment_value": 16008872.12
@@ -46,7 +49,8 @@
     "repeat_customers_in_scope": 2887,
     "repeat_rate_in_scope_pct": 3.04,
     "unique_customers_in_population": 94703,
-    "repeat_customers_in_population": 2874
+    "repeat_customers_in_population": 2874,
+    "repeat_rate_in_population_pct": 3.03
   },
   "late_rate": {
     "denominator": 96203,
@@ -58,7 +62,9 @@
     "average_review_score_all_orders": 4.0863,
     "average_review_score_delivered_in_window_late": 2.2709,
     "average_review_score_delivered_in_window_on_time": 4.291,
-    "late_vs_on_time_gap_delivered_in_window": -2.0201
+    "late_vs_on_time_gap_delivered_in_window": -2.0201,
+    "late_review_count_delivered_in_window": 6378,
+    "on_time_review_count_delivered_in_window": 89182
   },
   "excluded_statuses": {
     "payments_total": 270423.21
@@ -172,43 +178,53 @@
   },
   "top_categories_gmv": [
     {
-      "category_name": "beleza_saude",
+      "category_name_pt": "beleza_saude",
+      "category_name_en": "health_beauty",
       "gmv": 1251145.54
     },
     {
-      "category_name": "relogios_presentes",
+      "category_name_pt": "relogios_presentes",
+      "category_name_en": "watches_gifts",
       "gmv": 1194824.97
     },
     {
-      "category_name": "cama_mesa_banho",
+      "category_name_pt": "cama_mesa_banho",
+      "category_name_en": "bed_bath_table",
       "gmv": 1035485.07
     },
     {
-      "category_name": "esporte_lazer",
+      "category_name_pt": "esporte_lazer",
+      "category_name_en": "sports_leisure",
       "gmv": 977728.77
     },
     {
-      "category_name": "informatica_acessorios",
+      "category_name_pt": "informatica_acessorios",
+      "category_name_en": "computers_accessories",
       "gmv": 902922.7
     },
     {
-      "category_name": "moveis_decoracao",
+      "category_name_pt": "moveis_decoracao",
+      "category_name_en": "furniture_decor",
       "gmv": 721584.27
     },
     {
-      "category_name": "utilidades_domesticas",
+      "category_name_pt": "utilidades_domesticas",
+      "category_name_en": "housewares",
       "gmv": 625538.73
     },
     {
-      "category_name": "cool_stuff",
+      "category_name_pt": "cool_stuff",
+      "category_name_en": "cool_stuff",
       "gmv": 619724.39
     },
     {
-      "category_name": "automotivo",
+      "category_name_pt": "automotivo",
+      "category_name_en": "auto",
       "gmv": 585177.48
     },
     {
-      "category_name": "ferramentas_jardim",
+      "category_name_pt": "ferramentas_jardim",
+      "category_name_en": "garden_tools",
       "gmv": 479650.06
     }
   ]
