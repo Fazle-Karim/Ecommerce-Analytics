@@ -44,15 +44,34 @@ This is verified in the script itself (`sql/02_load_raw.sql`) with inline commen
 
 The script was executed three times in succession. The append-only `raw.load_log` table holds each run's row counts with a distinct `run_id`.
 
+### Run summary
+
 | run_id | Tables loaded | First load | Last load |
 |-------:|--------------:|------------|-----------|
 | 1 | 9 | 2026-10-04 19:20:40 | 2026-10-04 19:20:45 |
 | 2 | 9 | 2026-10-04 19:20:58 | 2026-10-04 19:21:03 |
 | 3 | 9 | 2026-10-04 19:21:27 | 2026-10-04 19:21:32 |
 
-Row counts across runs are byte-identical. The `TRUNCATE TABLE` at the top of the script ensures a failed or partial load is fully discarded before the next attempt. The `:on error exit` directive stops the script on any failure, and a final expected-count check raises an error if any table's loaded count differs from the pinned control totals.
+### Per-table row counts across runs
+
+Pivot of `raw.load_log` by `run_id`:
+
+| Table | Run 1 | Run 2 | Run 3 | Identical? |
+|-------|------:|------:|------:|:----------:|
+| category_translation | 71 | 71 | 71 | yes |
+| customers | 99,441 | 99,441 | 99,441 | yes |
+| geolocation | 1,000,163 | 1,000,163 | 1,000,163 | yes |
+| order_items | 112,650 | 112,650 | 112,650 | yes |
+| orders | 99,441 | 99,441 | 99,441 | yes |
+| payments | 103,886 | 103,886 | 103,886 | yes |
+| products | 32,951 | 32,951 | 32,951 | yes |
+| reviews | 99,224 | 99,224 | 99,224 | yes |
+| sellers | 3,095 | 3,095 | 3,095 | yes |
+
+**Every table's row count is identical across all three runs.** Only `load_timestamp` differs. The `TRUNCATE TABLE` at the top of the script ensures a failed or partial load is fully discarded before the next attempt. The `:on error exit` directive stops the script on any failure, and a final expected-count check raises an error if any table's loaded count differs from the pinned control totals.
 
 ---
+
 
 ## 4. Row Counts vs `control_totals.json`
 
@@ -156,6 +175,8 @@ Detected by comparing `?` counts between SQL and Python:
 
 **254 messages and 24 titles gained a `?` that is not in the source.** All 721 emoji (F0-xx sequences) plus any other out-of-code-page characters were silently converted.
 
+**Note on counting:** These figures are a **minimum** of corrupted rows. If a review already contained a `?` character (e.g., "É bom? Sim"), the corrupted character would not have incremented the count. The true number of corrupted characters is at least 278; the true number of affected reviews is at least 254.
+
 ### Fix: NVARCHAR Columns
 
 The raw tables were recreated with `NVARCHAR` columns instead of `VARCHAR`. `NVARCHAR` stores UTF-16 and bypasses code-page conversion entirely — the same BULK INSERT options read UTF-8 source bytes and write correct UTF-16 text.
@@ -180,9 +201,13 @@ Reviews — accented Portuguese text preserved:
 - "Não gostei! Comprei gato por lebre"
 - "O produto não chegou no prazo estipulado"
 
-Reviews — emoji preserved (byte lengths confirm multi-byte storage):
+Reviews — emoji (4-byte UTF-8) preserved, verified directly:
 
-- Longest reviews now exceed 400 bytes (they were capped around 200 with `VARCHAR`)
+- **SQL:** 294 reviews contain supplementary characters (surrogate pairs in UTF-16), tested via `COLLATE Latin1_General_BIN2` on the high-surrogate code-unit range.
+- **Python:** 294 reviews in the source contain code points above U+FFFF.
+- The two counts match exactly, confirming that no emoji were lost or converted.
+
+Breakdown: 273 reviews have emoji in the message field, 25 in the title, with 4 overlapping between the two.
 
 ### Why `aguai` and `aguaí` Appear Together
 

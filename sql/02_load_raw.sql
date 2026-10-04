@@ -197,6 +197,9 @@ GO
 -- -------------------------------------------------------------------------------
 -- 5. Expected-count assertion
 -- -------------------------------------------------------------------------------
+-- Expected counts below are mirrored from documentation/control_totals.json.
+-- python/check_sql_literals.py verifies these literals against the JSON on
+-- every run. Any mismatch there fails CI — no hand-entered values.
 DECLARE @run_id_check INT = (SELECT run_id FROM #run_ctx);
 
 DECLARE @mismatches NVARCHAR(MAX) = N'';
