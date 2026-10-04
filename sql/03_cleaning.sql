@@ -76,7 +76,36 @@ BEGIN
          @rows_in, @rows_out, @rows_flagged);
 END
 GO
+-- -------------------------------------------------------------------------------
+-- Helper: Title Case a string ("hello world" -> "Hello World")
+-- -------------------------------------------------------------------------------
+IF OBJECT_ID('dbo.TitleCase', 'FN') IS NOT NULL
+    DROP FUNCTION dbo.TitleCase;
+GO
 
+CREATE FUNCTION dbo.TitleCase (@input NVARCHAR(200))
+RETURNS NVARCHAR(200)
+AS
+BEGIN
+    DECLARE @output NVARCHAR(200) = LOWER(@input);
+    DECLARE @i INT = 1;
+    DECLARE @len INT = LEN(@output);
+    DECLARE @prev_was_space BIT = 1;
+
+    WHILE @i <= @len
+    BEGIN
+        DECLARE @c NCHAR(1) = SUBSTRING(@output, @i, 1);
+        IF @prev_was_space = 1 AND @c BETWEEN 'a' AND 'z'
+        BEGIN
+            SET @output = STUFF(@output, @i, 1, UPPER(@c));
+        END
+        SET @prev_was_space = CASE WHEN @c = ' ' THEN 1 ELSE 0 END;
+        SET @i = @i + 1;
+    END
+
+    RETURN @output;
+END
+GO
 PRINT 'Clean infrastructure ready.';
 GO
 
@@ -436,6 +465,214 @@ GO
 SELECT
     (SELECT COUNT(*) FROM clean.order_items WHERE flag_shipping_limit_anomaly = 1) AS order_items_shipping_anomalies,
     (SELECT COUNT(*) FROM clean.payments    WHERE flag_undefined_type = 1)          AS payments_undefined_type;
+GO
+
+-- Latest run's log
+SELECT rule_id, table_name, rows_in, rows_out, rows_flagged
+FROM clean.cleaning_log
+WHERE run_id = (SELECT MAX(run_id) FROM clean.cleaning_log)
+ORDER BY log_id;
+GO
+
+-- ===============================================================================
+-- SECTION 4: Dimension tables
+-- ===============================================================================
+
+-- -------------------------------------------------------------------------------
+-- 4.1 clean.category_translation
+--     Base 71 rows from raw + 2 manual overrides = 73 rows.
+--     Add display_name column for the report.
+-- -------------------------------------------------------------------------------
+IF OBJECT_ID('clean.category_translation', 'U') IS NOT NULL DROP TABLE clean.category_translation;
+
+CREATE TABLE clean.category_translation (
+    product_category_name           NVARCHAR(100) NOT NULL PRIMARY KEY,
+    product_category_name_english   NVARCHAR(100) NOT NULL,
+    display_name                    NVARCHAR(100) NOT NULL,
+    is_manual_override              BIT           NOT NULL DEFAULT 0
+);
+
+-- Base translations from raw
+INSERT INTO clean.category_translation
+    (product_category_name, product_category_name_english, display_name, is_manual_override)
+SELECT
+    LOWER(LTRIM(RTRIM(product_category_name))),
+    LOWER(LTRIM(RTRIM(product_category_name_english))),
+    -- Display name: Title Case the English name, with the pc_gamer override applied later
+    dbo.TitleCase(LOWER(LTRIM(RTRIM(product_category_name_english)))),
+    0
+FROM raw.category_translation;
+
+-- Manual overrides (2 rows)
+INSERT INTO clean.category_translation
+    (product_category_name, product_category_name_english, display_name, is_manual_override)
+VALUES
+    ('pc_gamer', 'pc_gamer', 'PC Gamer', 1),
+    ('portateis_cozinha_e_preparadores_de_alimentos',
+     'kitchen_food_prep_portables',
+     'Kitchen & Food Prep Portables', 1);
+
+-- The 'unknown' bucket for missing categories
+INSERT INTO clean.category_translation
+    (product_category_name, product_category_name_english, display_name, is_manual_override)
+VALUES ('unknown', 'unknown', 'Unknown', 1);
+
+DECLARE @cat_in  INT = (SELECT COUNT(*) FROM raw.category_translation);
+DECLARE @cat_out INT = (SELECT COUNT(*) FROM clean.category_translation);
+EXEC clean.usp_log_rule
+    @rule_id          = 'CATEGORY_TRANSLATION',
+    @rule_description = 'Load 71 base + 2 manual overrides + 1 unknown + display_name column',
+    @table_name       = 'category_translation',
+    @rows_in          = @cat_in,
+    @rows_out         = @cat_out,
+    @rows_flagged     = 0;
+GO
+
+PRINT 'clean.category_translation built.';
+GO
+
+-- -------------------------------------------------------------------------------
+-- 4.2 clean.products
+--     Fix "lenght" typo in column names. Resolve category. Flag missing dims.
+-- -------------------------------------------------------------------------------
+IF OBJECT_ID('clean.products', 'U') IS NOT NULL DROP TABLE clean.products;
+
+CREATE TABLE clean.products (
+    product_id                  NVARCHAR(50)  NOT NULL PRIMARY KEY,
+    product_category_name       NVARCHAR(100) NOT NULL,   -- 'unknown' when missing in raw
+    category_name_english       NVARCHAR(100) NOT NULL,
+    category_display_name       NVARCHAR(100) NOT NULL,
+    product_name_length         INT           NULL,
+    product_description_length  INT           NULL,
+    product_photos_qty          INT           NULL,
+    product_weight_g            INT           NULL,
+    product_length_cm           INT           NULL,
+    product_height_cm           INT           NULL,
+    product_width_cm            INT           NULL,
+    flag_missing_dimensions     BIT           NOT NULL DEFAULT 0
+);
+
+INSERT INTO clean.products
+    (product_id, product_category_name,
+     category_name_english, category_display_name,
+     product_name_length, product_description_length, product_photos_qty,
+     product_weight_g, product_length_cm, product_height_cm, product_width_cm,
+     flag_missing_dimensions)
+SELECT
+    p.product_id,
+    COALESCE(LOWER(LTRIM(RTRIM(p.product_category_name))), 'unknown'),
+    COALESCE(t.product_category_name_english, 'unknown'),
+    COALESCE(t.display_name, 'Unknown'),
+    TRY_CONVERT(INT, p.product_name_lenght),
+    TRY_CONVERT(INT, p.product_description_lenght),
+    TRY_CONVERT(INT, p.product_photos_qty),
+    TRY_CONVERT(INT, p.product_weight_g),
+    TRY_CONVERT(INT, p.product_length_cm),
+    TRY_CONVERT(INT, p.product_height_cm),
+    TRY_CONVERT(INT, p.product_width_cm),
+    CASE
+        WHEN p.product_weight_g    IS NULL
+          OR p.product_length_cm   IS NULL
+          OR p.product_height_cm   IS NULL
+          OR p.product_width_cm    IS NULL
+        THEN 1 ELSE 0
+    END
+FROM raw.products p
+LEFT JOIN clean.category_translation t
+    ON LOWER(LTRIM(RTRIM(p.product_category_name))) = t.product_category_name;
+
+DECLARE @prod_in      INT = (SELECT COUNT(*) FROM raw.products);
+DECLARE @prod_out     INT = (SELECT COUNT(*) FROM clean.products);
+DECLARE @prod_flagged INT = (SELECT COUNT(*) FROM clean.products WHERE flag_missing_dimensions = 1);
+EXEC clean.usp_log_rule
+    @rule_id          = 'PRODUCTS_TYPED',
+    @rule_description = 'Rename lenght -> length, resolve category, flag missing dimensions',
+    @table_name       = 'products',
+    @rows_in          = @prod_in,
+    @rows_out         = @prod_out,
+    @rows_flagged     = @prod_flagged;
+GO
+
+PRINT 'clean.products built.';
+GO
+
+-- -------------------------------------------------------------------------------
+-- 4.3 clean.reviews
+--     Deduplicate: partition by order_id, order by creation DESC, answer DESC, id
+--     -> 98,673 rows
+-- -------------------------------------------------------------------------------
+IF OBJECT_ID('clean.reviews', 'U') IS NOT NULL DROP TABLE clean.reviews;
+
+CREATE TABLE clean.reviews (
+    order_id                 NVARCHAR(50)  NOT NULL PRIMARY KEY,   -- grain: one row per order
+    review_id                NVARCHAR(50)  NOT NULL,               -- not unique (source has dupes)
+    review_score             INT           NOT NULL,
+    review_comment_title     NVARCHAR(MAX) NULL,
+    review_comment_message   NVARCHAR(MAX) NULL,
+    review_creation_date     DATETIME2     NULL,
+    review_answer_timestamp  DATETIME2     NULL
+);
+
+;WITH ranked AS (
+    SELECT
+        review_id,
+        order_id,
+        review_score,
+        review_comment_title,
+        review_comment_message,
+        review_creation_date,
+        review_answer_timestamp,
+        ROW_NUMBER() OVER (
+            PARTITION BY order_id
+            ORDER BY
+                TRY_CONVERT(DATETIME2, review_creation_date)     DESC,
+                TRY_CONVERT(DATETIME2, review_answer_timestamp)  DESC,
+                review_id                                        ASC
+        ) AS rn
+    FROM raw.reviews
+)
+INSERT INTO clean.reviews
+    (order_id, review_id, review_score,
+     review_comment_title, review_comment_message,
+     review_creation_date, review_answer_timestamp)
+SELECT
+    order_id,
+    review_id,
+    TRY_CONVERT(INT, review_score),
+    review_comment_title,
+    review_comment_message,
+    TRY_CONVERT(DATETIME2, review_creation_date),
+    TRY_CONVERT(DATETIME2, review_answer_timestamp)
+FROM ranked
+WHERE rn = 1;
+
+DECLARE @rev_in       INT = (SELECT COUNT(*) FROM raw.reviews);
+DECLARE @rev_out      INT = (SELECT COUNT(*) FROM clean.reviews);
+DECLARE @rev_removed  INT = @rev_in - @rev_out;
+EXEC clean.usp_log_rule
+    @rule_id          = 'REVIEWS_DEDUP',
+    @rule_description = 'Dedup by order_id: latest creation, then answer, then review_id',
+    @table_name       = 'reviews',
+    @rows_in          = @rev_in,
+    @rows_out         = @rev_out,
+    @rows_flagged     = 0;
+GO
+
+PRINT 'clean.reviews built.';
+GO
+
+-- -------------------------------------------------------------------------------
+-- 4.4 Verify
+-- -------------------------------------------------------------------------------
+SELECT 'clean.category_translation' AS table_name, COUNT(*) AS rows FROM clean.category_translation
+UNION ALL SELECT 'clean.products',                COUNT(*) FROM clean.products
+UNION ALL SELECT 'clean.reviews',                 COUNT(*) FROM clean.reviews;
+GO
+
+-- Flag counts
+SELECT
+    (SELECT COUNT(*) FROM clean.products WHERE flag_missing_dimensions = 1) AS products_missing_dims,
+    (SELECT COUNT(*) FROM clean.reviews)                                    AS reviews_deduped;
 GO
 
 -- Latest run's log
