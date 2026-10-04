@@ -2,7 +2,7 @@
 
 **Analyst:** Fazle Karim
 **Date:** October 2026
-**Version:** 1.2
+**Version:** 1.3
 **Purpose:** Every metric used in SQL, DAX, or the report is defined here
 before it appears in a query. Once frozen, changes require a version bump
 and a note in the changelog.
@@ -48,8 +48,9 @@ Reproducible via `python/order_funnel.py` and pinned in
 **Default population:** All core revenue, product, seller, and delivery
 metrics use the **analytic population** unless stated otherwise.
 
-**Customer-metric exception:** §4.1 (Unique Customers) and §4.4 (Repeat
-Purchase Rate) use the **full customer base**. Rationale in §4.
+**Customer-metric note:** §4.1 (Unique Customers) uses the full customer
+base for context. §4.4 (Repeat Purchase Rate) uses the **in-scope status**
+population. Every metric in §4 states its population explicitly.
 
 ---
 
@@ -95,7 +96,6 @@ order placed after midnight on 31 August.
 - **Population:** Analytic population
 - **Unit:** integer
 - **Pinned value:** 97,905
-- **Note:** Counts distinct orders, never item rows.
 
 ### 3.3 AOV — Average Order Value
 
@@ -119,10 +119,9 @@ order placed after midnight on 31 August.
 - **Population:** Analytic population
 - **Unit:** BRL
 - **Pinned value:** `BRL 15,683,706.74`
-- **Reconciliation:** This total matches `SUM(payments.payment_value)` on
-  the same population to within `BRL 2,762.33` net (0.0176%) and
-  `BRL 3,033.13` absolute (0.0193%). See §11.5 of the data quality log
-  for the breakdown.
+- **Reconciliation:** Matches `SUM(payments.payment_value)` on the same
+  population to within `BRL 2,762.33` net (0.0176%) and `BRL 3,033.13`
+  absolute (0.0193%).
 
 ### 3.6 Items per Order
 
@@ -137,16 +136,15 @@ order placed after midnight on 31 August.
 All customer metrics use **`customer_unique_id`** as the customer key — never
 `customer_id`. Rationale in `data_quality_log.md` §3.
 
-**Population note:** The customer base is a customer-level property, not a
-periodic metric. §4.1 and §4.4 use the **full customer base** (all dates,
-all statuses) because excluding customers whose only orders were canceled
-would understate the base. §4.2 and §4.3 use the **analytic population** for
-period-scoped definitions. Every metric below states its population.
+**Population note:** §4.1 uses the full customer base (all statuses, all
+dates) for context. §4.2 and §4.3 use the analytic population for
+period-scoped definitions. §4.4 uses the **in-scope status** population,
+consistent with the GMV rule. Every metric below states its population.
 
 ### 4.1 Unique Customers
 
 - **Formula:** `COUNT(DISTINCT customer_unique_id)`
-- **Population:** **Full customer base** — all dates, all statuses
+- **Population:** Full customer base — all dates, all statuses
 - **Unit:** integer
 - **Pinned value:** 96,096
 
@@ -155,7 +153,7 @@ period-scoped definitions. Every metric below states its population.
 - **Definition:** A customer whose first-ever order falls inside the current
   period, using the **analytic population** as the source of orders.
 - **Formula:** `COUNT(DISTINCT customer_unique_id)` where
-  `first_order_date BETWEEN period_start AND period_end`
+  `first_order_date >= period_start AND first_order_date < period_end`
 - **Population:** Analytic population
 - **Note:** "First-ever" is computed across the customer's full order
   history. The definition of "order" uses the analytic population's
@@ -176,17 +174,19 @@ period-scoped definitions. Every metric below states its population.
 - **Formula:** `(Repeat customers) ÷ (Total unique customers)`
   - Repeat customers: `COUNT(DISTINCT customer_unique_id HAVING >1 order)`
   - Total unique customers: `COUNT(DISTINCT customer_unique_id)`
-- **Population:** **Full customer base** — all dates, all statuses.
-  This is a customer-base property, not a periodic metric.
+- **Population:** **In-scope statuses only** — all dates, but only
+  orders whose status is in {delivered, shipped, invoiced, processing,
+  approved}. Consistent with the GMV rule (§3.1), a canceled order is not
+  a purchase and does not count toward repeat activity.
 - **Unit:** percentage
-- **Pinned value:** **3.12%** (2,997 of 96,096)
+- **Pinned value:** **3.04%** (2,887 of 94,986)
 
-> **Alternative figure under status filter:** If repeat rate is computed
-> on in-scope statuses only (excluding customers whose only orders were
-> canceled, unavailable, or created), the value is **3.04%** (2,887 of
-> 94,986). This figure is deliberately not used — excluding 1,110 real
-> customers from the denominator would understate the base. Documented
-> here for reference only. See `control_totals.json` for both figures.
+> **Alternative figure (full base):** If repeat rate is computed over
+> **all statuses** (including customers whose only additional order was
+> canceled, unavailable, or created), the value is **3.12%** (2,997 of
+> 96,096). This figure is documented in `control_totals.json` for
+> reference only. The reported figure is 3.04%, because the report uses
+> one figure and that figure must be consistent with the GMV rule.
 
 ### 4.5 RFM Segments
 
@@ -245,7 +245,7 @@ All metrics in this section use the **Delivered filter**:
 `order_status = 'delivered'` AND `order_delivered_customer_date IS NOT NULL`,
 plus the **Time filter** and **In-scope filter**.
 
-**Late-rate denominator = 96,203 orders** (pinned in control_totals.json).
+**Late-rate denominator = 96,203 orders** (pinned in `control_totals.json`).
 
 ### 6.1 Delivery Time
 
@@ -271,8 +271,7 @@ plus the **Time filter** and **In-scope filter**.
 - **Pinned value:** **6.79%** (6,531 late orders).
 
 > **Note:** An all-dates figure (6.77%) exists in earlier drafts. Only the
-> in-window figure is reported. The out-of-window figure is not comparable
-> and is not used.
+> in-window figure is reported.
 
 ### 6.4 Average Review Score
 
@@ -288,6 +287,7 @@ plus the **Time filter** and **In-scope filter**.
 - **Formula:** `AVG(review_score for late orders) − AVG(review_score for on-time orders)`
 - **Population:** Delivered filter + Time filter + In-scope filter + review present
 - **Unit:** decimal points
+- **Pinned values:** late = **2.27**, on-time = **4.29**, gap = **−2.02**
 
 ---
 
@@ -367,10 +367,12 @@ Currency values in markdown files use `BRL` or are wrapped in backticks:
 |---------|------|--------|
 | 1.0 | October 2026 | Initial freeze |
 | 1.1 | October 2026 | Corrected §3.5 reconciliation. Added §1 funnel. Clarified §4.1 and §4.4. Rule-based RFM frequency. Snapshot 2018-08-31. Renamed "Freight Revenue" → "Freight Charged". Date-based late flag. Late-rate denominator 96,203. Added §8.2 population-consistency rule. Added §8.5 currency formatting. |
-| 1.2 | October 2026 | Fixed time-filter boundary bug in §2 and §5.2 (half-open intervals). Reworded §2 and §9 — dropped "charged and refunded"; now "payment record exists; no refund data; status indicates order did not complete". Corrected §4.4 to use full customer base; added §4.4 note for 3.04% in-scope alternative. Fixed §1 wording — customer metrics use full customer base, not analytic population. Added `control_totals.json` reference. Rounding rule §8.4 now includes reconciliation comparisons. RFM population explicitly restricted to orders on or before 2018-08-31. |
+| 1.2 | October 2026 | Fixed time-filter boundary bug in §2 and §5.2 (half-open intervals). Reworded §2 and §9 — dropped "charged and refunded". Corrected §4.4 filter. Fixed §1 wording. Added `control_totals.json` reference. Rounding rule §8.4 now includes reconciliation comparisons. RFM population explicitly restricted to orders on or before 2018-08-31. |
+| 1.3 | October 2026 | §4.4: headline repeat rate changed to **3.04% (in-scope)**. 3.12% (all statuses) documented as alternative, matching D-014. §1 customer-metric note updated to reflect §4.4's population. §4.2 uses half-open interval for `first_order_date`. §6.5 added pinned late/on-time review scores (2.27 / 4.29, gap −2.02). |
 
 ---
 
 *Companion files: `control_totals.json`, `control_totals.md`,*
 *`data_quality_log.md`, `decision_log.md`,*
-*`order_funnel.txt`, `reconcile_payments_v2.txt`, `late_flag_check.txt`.*
+*`order_funnel.txt`, `reconcile_payments_v2.txt`, `late_flag_check.txt`,*
+*`ab_gap_check.txt`.*

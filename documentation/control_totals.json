@@ -1,10 +1,20 @@
 {
-  "generated_at": "2026-10-04 05:37:57.133723",
-  "dataset": {
-    "raw_orders": 99441,
-    "raw_customers": 99441,
-    "raw_items_rows": 112650,
-    "raw_payments_rows": 103886
+  "generated_at": "2026-10-04 06:37:05.552189",
+  "raw_level": {
+    "orders_row_count": 99441,
+    "order_items_row_count": 112650,
+    "payments_row_count": 103886,
+    "reviews_row_count": 99224,
+    "customers_row_count": 99441,
+    "sellers_row_count": 3095,
+    "products_row_count": 32951,
+    "geolocation_row_count": 1000163,
+    "category_translation_row_count": 71,
+    "orders_distinct_order_id": 99441,
+    "customers_distinct_unique_id": 96096,
+    "raw_sum_price": 13591643.7,
+    "raw_sum_freight_value": 2251909.54,
+    "raw_sum_payment_value": 16008872.12
   },
   "funnel": {
     "raw_orders": 99441,
@@ -23,7 +33,9 @@
     "net_residual": 2762.33,
     "absolute_residual": 3033.13,
     "orders_exact_match": 97336,
-    "orders_with_diff": 569,
+    "orders_differ_one_cent": 273,
+    "orders_within_one_cent": 97609,
+    "orders_with_larger_diff": 296,
     "orders_compared": 97905
   },
   "customers": {
@@ -32,12 +44,21 @@
     "repeat_rate_all_statuses_pct": 3.12,
     "unique_customers_in_scope": 94986,
     "repeat_customers_in_scope": 2887,
-    "repeat_rate_in_scope_pct": 3.04
+    "repeat_rate_in_scope_pct": 3.04,
+    "unique_customers_in_population": 94703,
+    "repeat_customers_in_population": 2874
   },
   "late_rate": {
     "denominator": 96203,
     "late_orders": 6531,
     "late_rate_pct": 6.79
+  },
+  "reviews": {
+    "orders_with_deduped_review": 98673,
+    "average_review_score": 4.09,
+    "average_review_score_late": 2.27,
+    "average_review_score_on_time": 4.29,
+    "late_vs_on_time_gap": -2.02
   },
   "excluded_statuses": {
     "payments_total": 270423.21
@@ -46,5 +67,149 @@
     "in_window_orders_2017": 44375,
     "in_window_orders_2018": 53530,
     "in_window_orders_2017_2018_all_statuses": 99092
-  }
+  },
+  "monthly_window": {
+    "2017-01": {
+      "orders_all_statuses": 800,
+      "orders_in_scope": 787,
+      "gmv_item_price_only": 120098.27
+    },
+    "2017-02": {
+      "orders_all_statuses": 1780,
+      "orders_in_scope": 1718,
+      "gmv_item_price_only": 244959.35
+    },
+    "2017-03": {
+      "orders_all_statuses": 2682,
+      "orders_in_scope": 2617,
+      "gmv_item_price_only": 368341.32
+    },
+    "2017-04": {
+      "orders_all_statuses": 2404,
+      "orders_in_scope": 2377,
+      "gmv_item_price_only": 353842.98
+    },
+    "2017-05": {
+      "orders_all_statuses": 3700,
+      "orders_in_scope": 3640,
+      "gmv_item_price_only": 503159.19
+    },
+    "2017-06": {
+      "orders_all_statuses": 3245,
+      "orders_in_scope": 3205,
+      "gmv_item_price_only": 429916.61
+    },
+    "2017-07": {
+      "orders_all_statuses": 4026,
+      "orders_in_scope": 3946,
+      "gmv_item_price_only": 492287.3
+    },
+    "2017-08": {
+      "orders_all_statuses": 4331,
+      "orders_in_scope": 4272,
+      "gmv_item_price_only": 568245.79
+    },
+    "2017-09": {
+      "orders_all_statuses": 4285,
+      "orders_in_scope": 4227,
+      "gmv_item_price_only": 621415.91
+    },
+    "2017-10": {
+      "orders_all_statuses": 4631,
+      "orders_in_scope": 4547,
+      "gmv_item_price_only": 660179.62
+    },
+    "2017-11": {
+      "orders_all_statuses": 7544,
+      "orders_in_scope": 7421,
+      "gmv_item_price_only": 1003862.14
+    },
+    "2017-12": {
+      "orders_all_statuses": 5673,
+      "orders_in_scope": 5618,
+      "gmv_item_price_only": 742183.79
+    },
+    "2018-01": {
+      "orders_all_statuses": 7269,
+      "orders_in_scope": 7187,
+      "gmv_item_price_only": 945456.29
+    },
+    "2018-02": {
+      "orders_all_statuses": 6728,
+      "orders_in_scope": 6624,
+      "gmv_item_price_only": 837895.43
+    },
+    "2018-03": {
+      "orders_all_statuses": 7211,
+      "orders_in_scope": 7168,
+      "gmv_item_price_only": 981051.06
+    },
+    "2018-04": {
+      "orders_all_statuses": 6939,
+      "orders_in_scope": 6919,
+      "gmv_item_price_only": 993592.98
+    },
+    "2018-05": {
+      "orders_all_statuses": 6873,
+      "orders_in_scope": 6833,
+      "gmv_item_price_only": 992871.75
+    },
+    "2018-06": {
+      "orders_all_statuses": 6167,
+      "orders_in_scope": 6145,
+      "gmv_item_price_only": 863265.53
+    },
+    "2018-07": {
+      "orders_all_statuses": 6292,
+      "orders_in_scope": 6233,
+      "gmv_item_price_only": 878044.27
+    },
+    "2018-08": {
+      "orders_all_statuses": 6512,
+      "orders_in_scope": 6421,
+      "gmv_item_price_only": 848860.1
+    }
+  },
+  "top_categories_gmv": [
+    {
+      "category_name": "beleza_saude",
+      "gmv": 1251145.54
+    },
+    {
+      "category_name": "relogios_presentes",
+      "gmv": 1194824.97
+    },
+    {
+      "category_name": "cama_mesa_banho",
+      "gmv": 1035485.07
+    },
+    {
+      "category_name": "esporte_lazer",
+      "gmv": 977728.77
+    },
+    {
+      "category_name": "informatica_acessorios",
+      "gmv": 902922.7
+    },
+    {
+      "category_name": "moveis_decoracao",
+      "gmv": 721584.27
+    },
+    {
+      "category_name": "utilidades_domesticas",
+      "gmv": 625538.73
+    },
+    {
+      "category_name": "cool_stuff",
+      "gmv": 619724.39
+    },
+    {
+      "category_name": "automotivo",
+      "gmv": 585177.48
+    },
+    {
+      "category_name": "ferramentas_jardim",
+      "gmv": 479650.06
+    }
+  ]
 }

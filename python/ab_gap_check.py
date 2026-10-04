@@ -64,7 +64,7 @@ log(f"  Status-total = payments on canceled/unavail/created: BRL {status_total:>
 log(f"  Gap (A+B) - status-total:                            BRL {AB_total - status_total:>12,.2f}")
 
 # ------------------------------------------------------------------
-# Decompose A by status
+# A decomposed by status
 # ------------------------------------------------------------------
 log("\n## A DECOMPOSED BY STATUS")
 log("\nPayments on no-item orders, grouped by the order's status:")
@@ -83,11 +83,11 @@ log(A_by_status.to_string())
 # ------------------------------------------------------------------
 # A split into in-scope vs excluded statuses
 # ------------------------------------------------------------------
-A_in_scope_status     = {oid for oid in A_orders if orders_by_status.get(oid) in IN_SCOPE}
-A_excluded_status     = {oid for oid in A_orders if orders_by_status.get(oid) in EXCLUDED}
+A_in_scope_status = {oid for oid in A_orders if orders_by_status.get(oid) in IN_SCOPE}
+A_excluded_status = {oid for oid in A_orders if orders_by_status.get(oid) in EXCLUDED}
 
-A_in_scope_total     = pay_total(A_in_scope_status)
-A_excluded_total     = pay_total(A_excluded_status)
+A_in_scope_total = pay_total(A_in_scope_status)
+A_excluded_total = pay_total(A_excluded_status)
 
 log("\n## A SPLIT BY WHETHER THE ORDER STATUS IS IN-SCOPE OR EXCLUDED")
 log(f"\n  A with in-scope status:      BRL {A_in_scope_total:>12,.2f}  ({len(A_in_scope_status):,} orders)")
@@ -98,23 +98,27 @@ log(f"  A total:                     BRL {A_total:>12,.2f}")
 # The identity
 # ------------------------------------------------------------------
 log("\n## THE IDENTITY")
-log("\n  status-total = A_excluded_status + B_orders_whose_status_is_excluded?")
-log("  Wait — B is defined as orders with items AND out-of-scope status.")
-log("  So B = payments on orders with items AND excluded status.")
-log("  status-total = payments on orders with excluded status (regardless of items).")
 log("")
-log("  Therefore:  status-total = A_excluded_status + B")
+log("  B is defined as payments on orders with items AND out-of-scope status.")
+log("  The status-total is payments on orders with any excluded status,")
+log("  regardless of whether the order has items.")
+log("")
+log("  This gives the identity:")
+log("    status-total = A_excluded_status + B")
 log("")
 log(f"  A_excluded_status:  BRL {A_excluded_total:>12,.2f}")
 log(f"  B:                  BRL {B_total:>12,.2f}")
-log(f"  Sum:                BRL {A_excluded_total + B_total:>12,.2f}")
+log(f"  Sum:                BRL {round(A_excluded_total + B_total, 2):>12,.2f}")
 log(f"  status-total:       BRL {status_total:>12,.2f}")
-log(f"  Residual:           BRL {round((A_excluded_total + B_total) - status_total, 2):>12,.2f}")
+residual_identity = round((A_excluded_total + B_total) - status_total, 2)
+if residual_identity == 0:
+    residual_identity = 0.00   # avoid displaying -0.00
+log(f"  Residual:           BRL {residual_identity:>12,.2f}")
 log("")
-log("  And the 226.96 gap is exactly A_in_scope_status:")
+log("  The 226.96 gap is exactly A_in_scope_status:")
 log(f"    A with in-scope status: BRL {A_in_scope_total:>12,.2f}")
 log("")
-log("  Check:")
+log("  Verification:")
 log(f"    (A + B) - status-total = A_in_scope_status")
 log(f"    (A_total + B_total) - status_total = {round(A_total + B_total - status_total, 2)}")
 log(f"    A_in_scope_total                    = {A_in_scope_total}")
@@ -124,8 +128,9 @@ log(f"    Difference:                         = {round((A_total + B_total - stat
 # Sample of the in-scope-status no-item orders
 # ------------------------------------------------------------------
 log("\n## SAMPLE: IN-SCOPE-STATUS ORDERS THAT HAVE NO ITEM ROWS")
-log("\nThese are orders whose status looks fulfillable, but which have no rows")
-log("in order_items. They are in population A but not in the status-total.")
+log("\nThese are orders whose status is in-scope (delivered, shipped,")
+log("invoiced, processing, approved) but which have no rows in order_items.")
+log("They appear in A but not in the status-total.")
 
 sample = orders[orders["order_id"].isin(A_in_scope_status)][
     ["order_id", "order_status", "order_purchase_timestamp"]
@@ -135,16 +140,11 @@ log(sample.to_string(index=False))
 
 log("\n## SUMMARY")
 log("")
-log("  The 226.96 gap is A_in_scope_status: payments on orders that have")
-log("  no item rows but whose status is in-scope (delivered, shipped,")
-log("  invoiced, processing, approved).")
-log("")
-log("  These orders appear in A (no item rows) but not in the status-total")
-log("  (which is restricted to canceled/unavailable/created).")
-log("")
-log("  Implication: these orders have a delivered/shipped status but no")
-log("  item rows, which is unusual. They are outside the analytic population")
-log("  (which requires item rows) and do not affect any metric.")
+log(f"  The {round(A_total + B_total - status_total, 2)} gap is A_in_scope_status: payments")
+log("  on orders that have no item rows but whose status is in-scope.")
+log(f"  The three orders involved are shipped (1) and invoiced (2), all")
+log("  placed on 2016-10-05 — outside the analytic population and outside")
+log("  the trend window. They affect no metric.")
 
 log(f"\nDiagnostic complete.")
 

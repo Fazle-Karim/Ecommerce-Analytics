@@ -2,7 +2,7 @@
 
 **Analyst:** Fazle Karim
 **Date:** October 2026
-**Version:** 1.2
+**Version:** 1.3
 **Purpose:** A running log of every non-obvious modeling, metric, or
 cleaning decision made during this project. Each entry includes what was
 decided, why, and what alternative was rejected. Interviewers ask "why did
@@ -272,21 +272,24 @@ remain excluded along with all other canceled orders.
 
 ---
 
-### D-014: Repeat-rate population = full customer base (all statuses)
+### D-014: Repeat-rate population = in-scope statuses (3.04%)
 
-**Decision:** The reported repeat purchase rate is **3.12%** (2,997
-repeaters of 96,096 customers), computed over the full customer base — all
-dates, all statuses.
+**Decision:** The reported repeat purchase rate is **3.04%** (2,887
+repeaters of 94,986 customers), computed over **in-scope statuses only**
+(delivered, shipped, invoiced, processing, approved).
 
-**Why:** Repeat purchase rate is a customer-base property, not a periodic
-metric. A customer whose only orders were canceled, unavailable, or created
-still belongs to the base. Excluding such customers would drop the
-denominator to 94,986 and change the rate to 3.04%. Both figures are
-available, but the reported one uses the full base.
+**Why:** A canceled order is not a purchase — our own GMV rule (D-002)
+treats canceled, unavailable, and created orders as not completing as a
+sale. Using the all-status population would count a customer whose only
+repeat activity was a canceled second order as a "repeater," contradicting
+the same rule that governs every other customer metric in this project
+(new customers, returning customers, RFM). The report uses one figure, and
+that figure is consistent with the rest of the report.
 
-**Alternative rejected:** Using the in-scope-status filter. It would
-understate the customer base by 1,110 customers and produce a number that
-does not describe the base as a whole.
+**Alternative rejected:** The full-base all-status rate (3.12% — 2,997 of
+96,096). It is documented in `control_totals.json`
+(`repeat_rate_all_statuses_pct`) for reference but is not the reported
+figure.
 
 **Both values pinned in `control_totals.json`** under
 `customers.repeat_rate_all_statuses_pct` and
@@ -305,8 +308,8 @@ are rounded to 2 decimal places before computing differences.
 `-1.705303e-13`), which would otherwise be counted as a residual. Rounding
 to cents removes the noise and produces an honest distribution.
 
-**Effect:** `orders_exact_match` changed from 97,534 (raw) to 97,336
-(cents-rounded). The net and absolute residuals are unchanged
+**Effect:** `orders_exact_match` = 97,336; `orders_differ_one_cent` = 273;
+`orders_within_one_cent` = 97,609. Net and absolute residuals unchanged
 (`BRL 2,762.33` and `BRL 3,033.13`).
 
 **Evidence:** `data_quality_log.md` §11.3; `control_totals.json`.

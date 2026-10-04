@@ -2,7 +2,7 @@
 
 **Analyst:** Fazle Karim
 **Date:** October 2026
-**Version:** 3.1
+**Version:** 3.2
 **Dataset:** Olist Brazilian E-commerce (Kaggle) — ~100k orders, 2016–2018
 **Purpose:** Document every data-quality finding that drives downstream
 cleaning and modeling decisions in this project.
@@ -92,10 +92,7 @@ no items are all out-of-scope status or outside the window.
 |-------|----------------:|------------------:|
 | 2017-01 to 2017-12 | 44,375 | — |
 | 2018-01 to 2018-08 | 53,530 | — |
-| 2017-01 to 2018-08 (all statuses) | — | **99,092** |
-
-(The all-status 99,092 is used for year-over-year and monthly trend charts;
-the in-scope figures are used for all revenue metrics.)
+| 2017-01 to 2018-08 (all statuses) | — | 99,092 |
 
 ---
 
@@ -109,6 +106,8 @@ the in-scope figures are used for all revenue metrics.)
 | Repeat rate (all statuses) | 3.12% | 96,096 |
 | Repeat customers (>1 distinct order, in-scope statuses) | 2,887 | 94,986 |
 | Repeat rate (in-scope statuses) | 3.04% | 94,986 |
+| Unique customers (analytic population) | 94,703 | — |
+| Repeat customers (analytic population) | 2,874 | 94,703 |
 
 **Distribution of orders per customer (all statuses):**
 
@@ -124,15 +123,9 @@ the in-scope figures are used for all revenue metrics.)
 | 9 | 1 |
 | 17 | 1 |
 
-**Interpretation:** Olist is essentially a one-purchase marketplace. The
-repeat rate is 3.12% of the full customer base. One outlier placed 17
-orders; worth noting in the RFM analysis but not representative.
-
-**Decision — which repeat rate is reported:** The reported repeat rate uses
-the **full customer base (all statuses) = 3.12%**. The in-scope figure
-(3.04%) excludes customers whose only orders were canceled, unavailable,
-or created, and would understate the base. Both values are pinned in
-`control_totals.json`. The choice is recorded in the decision log (D-014).
+**Interpretation:** Olist is essentially a one-purchase marketplace. One
+outlier placed 17 orders; worth noting in the RFM analysis but not
+representative.
 
 **Critical modeling note:** `customer_id` is unique per order;
 `customer_unique_id` identifies the actual person. All RFM, cohort, and
@@ -194,6 +187,16 @@ orders.
 | 4★ | 19,142 | 19.29% |
 | 5★ | 57,328 | 57.78% |
 
+**Deduplicated review figures (from `control_totals.json`):**
+
+| Metric | Value |
+|--------|------:|
+| Orders with a deduplicated review | 98,673 |
+| Average review score | 4.09 |
+| Average review score (late orders) | 2.27 |
+| Average review score (on-time orders) | 4.29 |
+| Late vs on-time gap | −2.02 |
+
 **Null analysis:**
 - `review_comment_title`: 88.34% null
 - `review_comment_message`: 58.70% null
@@ -223,7 +226,7 @@ broken by `review_answer_timestamp DESC` so the result is deterministic.
 | created | 5 | 0.01% |
 | approved | 2 | 0.00% |
 
-**Payment record check (from `python/late_flag_check.py`):**
+**Payment record check:**
 
 | Status | Orders | With payment row | Payments on these |
 |--------|-------:|-----------------:|------------------:|
@@ -254,19 +257,18 @@ Excludes {canceled, unavailable, created}.
 **Time axis:** `order_purchase_timestamp` throughout.
 
 **Boundary convention:** All date windows use half-open intervals
-(`>= start AND < end`). The trend window is
-`>= '2017-01-01' AND < '2018-09-01'`.
+(`>= start AND < end`).
 
 Monthly order counts reveal three regimes:
 
 | Period | Total orders | Characteristic |
 |--------|-------------:|----------------|
 | 2016-09 to 2016-12 | 329 | Ramp-up — excluded from trends |
-| 2017-01 to 2018-08 | **99,092** | Stable production |
+| 2017-01 to 2018-08 | 99,092 | Stable production |
 | 2018-09 to 2018-10 | 20 | Incomplete tail — excluded |
 
 **Sum check:** 329 + 99,092 + 20 = 99,441 ✅ (independently verified;
-pinned in `control_totals.json` under `year_splits`).
+pinned in `control_totals.json`).
 
 **Early 2017 was slow, not steady.** Monthly orders by month (all statuses):
 Jan 800 · Feb 1,780 · Mar 2,682 · Apr 2,404 · May 3,700 · Jun 3,245 ·
@@ -274,10 +276,6 @@ Jul 4,026 · Aug 4,331 · Sep 4,285 · Oct 4,631 · Nov 7,544 · Dec 5,673.
 
 **Effective trend window:** `>= '2017-01-01' AND < '2018-09-01'` (20 months).
 **YoY comparison:** `2017-01-01` to `2017-08-31` vs `2018-01-01` to `2018-08-31`.
-
-**Correction from v3.0:** An earlier draft showed 98,892 for the trend
-window, which was a hand-entered error. The correct figure is **99,092**,
-independently verified by `control_totals.json`.
 
 ---
 
@@ -304,6 +302,21 @@ column renders it as `Unknown`.
 `Pc Gamer` for `pc_gamer`, which reads poorly. A single override entry
 forces `PC Gamer` in the display column. All other categories use the
 simple Title Case rule.
+
+**Top 10 categories by GMV (analytic population, item price only):**
+
+| Rank | Category | GMV |
+|-----:|----------|----:|
+| 1 | `beleza_saude` | `BRL 1,251,145.54` |
+| 2 | `relogios_presentes` | `BRL 1,194,824.97` |
+| 3 | `cama_mesa_banho` | `BRL 1,035,485.07` |
+| 4 | `esporte_lazer` | `BRL 977,728.77` |
+| 5 | `informatica_acessorios` | `BRL 902,922.70` |
+| 6 | `moveis_decoracao` | `BRL 721,584.27` |
+| 7 | `utilidades_domesticas` | `BRL 625,538.73` |
+| 8 | `cool_stuff` | `BRL 619,724.39` |
+| 9 | `automotivo` | `BRL 585,177.48` |
+| 10 | `ferramentas_jardim` | `BRL 479,650.06` |
 
 ---
 
@@ -368,21 +381,17 @@ From `python/diagnose_reconciliation.py`:
 | D — payments on the correct population | `BRL 15,686,469.07` |
 | **Total (A + B + C + D)** | **`BRL 16,008,872.12`** |
 
-The attribution is true by construction. The **auditable bridge** from the
-original gap requires the items-side term outside the window:
+The auditable bridge from the original gap requires the items-side term
+outside the window:
 
 | Term | Amount |
 |------|-------:|
 | A — payments, no item rows | `BRL 162,591.95` |
 | B — payments, out-of-scope status | `BRL 108,058.22` |
 | C — payments, outside window | `BRL 51,752.88` |
-| **Items-side, outside window** | **−`BRL 51,820.29`** |
-| **Genuine residual on correct population** | **`BRL 2,762.33`** |
+| Items-side, outside window | −`BRL 51,820.29` |
+| Genuine residual on correct population | `BRL 2,762.33` |
 | **Bridge total** | **`BRL 273,345.09`** ✅ |
-
-The items-side term is the amount of item price + freight **excluded** by
-the time window but **included** in the LEFT total. Subtracting it makes
-the bridge auditable from both sides rather than true by construction.
 
 ### 11.3 Corrected Reconciliation — Analytic Population
 
@@ -394,12 +403,18 @@ Population: in-scope status AND in window AND has item rows = **97,905 orders**.
 | `SUM(item_total)` | `BRL 15,683,706.74` |
 | **NET difference** | **`BRL 2,762.33` (0.0176%)** |
 | **SUM of absolute differences** | **`BRL 3,033.13` (0.0193%)** |
-| Orders matching within 1 cent | 97,336 (99.42%) |
-| Orders with any difference | 569 |
+| Orders exactly equal | **97,336 (99.42%)** |
+| Orders differing by exactly 1 cent | **273 (0.28%)** |
+| Orders within 1 cent (inclusive) | **97,609 (99.70%)** |
+| Orders with larger difference | **296 (0.30%)** |
+| Orders compared | 97,905 |
 
-**Rounding convention:** Both sides rounded to cents before comparison.
-Floating-point noise (values like `1e-13`) is not treated as a residual.
-All values pinned in `control_totals.json`.
+**Two distinct measures.** "Orders exactly equal" counts orders where
+`payment_total` equals `item_total` to the cent. "Orders within 1 cent"
+additionally counts the 273 orders that differ by exactly one cent. The
+exact-match percentage (99.42%) and the within-one-cent percentage
+(99.70%) describe the same underlying data at different tolerances. Both
+are pinned in `control_totals.json`.
 
 ### 11.4 Residual Breakdown
 
@@ -457,13 +472,10 @@ a pure calendar date.
 | **Date-only** | **6,534** | **6.77%** |
 | Difference | 1,292 | 1.34 pp |
 
-**Decision:** The late flag compares **dates**, not timestamps. A raw
-timestamp comparison misclassifies 1,292 orders as late because the
-estimated date sits at midnight.
+**Decision:** The late flag compares **dates**, not timestamps.
 
 **Note on the 6.77% figure:** This rate is computed over all dates, which
-includes out-of-window orders. It is **not** the reported late rate. The
-reported figure is the in-window one (§12.4).
+includes out-of-window orders. It is **not** the reported late rate.
 
 ### 12.3 Delivered orders with a null delivery date
 
@@ -478,6 +490,16 @@ These are excluded from the late-rate denominator but kept in Order Count.
 | Delivered with non-null delivery date | **96,203** |
 | Late orders (date-based) | 6,531 |
 | **Late rate** | **6.79%** |
+
+Pinned in `control_totals.json`.
+
+### 12.5 Late vs on-time review scores
+
+| Segment | Average review score |
+|---------|--------------------:|
+| Late orders | **2.27** |
+| On-time orders | **4.29** |
+| **Gap** | **−2.02 points** |
 
 Pinned in `control_totals.json`.
 
@@ -528,7 +550,7 @@ ramp-up, not organic growth.
 | Finding | Cleaning action |
 |---------|-----------------|
 | `customer_unique_id` is the real customer key | Use only this for RFM/cohorts |
-| Repeat rate is 3.12% (all statuses) | Report on full customer base; 3.04% in-scope figure not used |
+| Repeat rate is 3.12% (all statuses) / 3.04% (in-scope) | Report on in-scope; 3.12% is the full-base figure (see D-014) |
 | Payments split across rows (2.98%) | Aggregate to order level before joins |
 | One order has no payment row | Retain with NULL `payment_value`; flag |
 | 814 duplicate `review_id` values | Dedup: partition by `order_id`, order by `review_creation_date DESC`, `review_answer_timestamp DESC` |
@@ -542,8 +564,7 @@ ramp-up, not organic growth.
 | Reconciliation net 0.0176%, abs 0.0193% | Installment interest; not a data issue |
 | Late flag must compare dates, not timestamps | Prevents 1,292 false positives |
 | Late rate = 6.79% | Denominator = 96,203 |
-| 8 delivered orders have null delivery date | Excluded from late rate; kept in order count |
-| 6 canceled orders have delivery date + payment | Edge case; excluded with all canceled orders |
+| Late vs on-time review gap = −2.02 points | Central finding for delivery analysis |
 
 ---
 
@@ -556,8 +577,7 @@ ramp-up, not organic growth.
 5. Any two numbers appearing in a comparison must come from the same population.
 6. Currency values in markdown use `BRL` or backticks.
 7. Date windows use half-open intervals (`>= start AND < end`).
-8. Reconciliation comparisons round to cents first, so floating-point noise
-   is not treated as a residual.
+8. Reconciliation comparisons round to cents first.
 9. Control totals are pinned in `control_totals.json` and verified by a
    separate script.
 
@@ -570,10 +590,12 @@ ramp-up, not organic growth.
 | 1.0 | October 2026 | Initial draft |
 | 2.0 | October 2026 | Corrected repeat count, multi-payment share, missing-review count, multi-item count. Added extended FK, reconciliation, 2018 hypothesis. |
 | 3.0 | October 2026 | Added order funnel. Corrected reconciliation with root cause and 4-part attribution. Added refund verification. Added late-flag assumptions. Added population and currency-formatting rules. |
-| 3.1 | October 2026 | Fixed time-window to half-open intervals (§2, §7). Fixed 98,892 → 99,092 in §7 (script-verified). Reworded §6 and §14 — no claim of "refunded"; only "payment record exists, no refund data". Added items-side bridge term `BRL 51,820.29` to §11.2. Added rounding convention to §11.3. Documented 6 canceled with delivery date (§6). Added §3 dual repeat-rate figures (3.12% all-status, 3.04% in-scope). Added §4.4 cross-reference. Added `control_totals.json` references throughout. Reworded §11.5 — dropped claim about who receives installment interest. |
+| 3.1 | October 2026 | Fixed time-window to half-open intervals (§2, §7). Fixed trend-window total to 99,092 (script-verified). Reworded §6 and §14 — no claim of "refunded"; only "payment record exists, no refund data". Added items-side bridge term `BRL 51,820.29` to §11.2. Added rounding convention to §11.3. Documented 6 canceled with delivery date (§6). Added §3 dual repeat-rate figures. Reworded §11.5. |
+| 3.2 | October 2026 | §11.3: separated exact-match (97,336) from within-1-cent (97,609); added 1-cent-difference category (273). Added §5 deduplicated review figures (orders with review, avg score, late vs on-time). Added §8 top-10 categories table. Added §12.5 late vs on-time review scores. Added customers-in-population figures to §3. |
 
 ---
 
 *Companion files: `control_totals.json`, `control_totals.md`,*
 *`metric_definitions.md`, `decision_log.md`,*
-*`order_funnel.txt`, `reconcile_payments_v2.txt`, `late_flag_check.txt`.*
+*`order_funnel.txt`, `reconcile_payments_v2.txt`, `late_flag_check.txt`,*
+*`ab_gap_check.txt`.*
