@@ -1,0 +1,36 @@
+test_name                                                                                            expected                                           actual                                             status
+---------------------------------------------------------------------------------------------------- -------------------------------------------------- -------------------------------------------------- ----------
+row_count.customers                                                                                  99441                                              99441                                              PASS
+row_count.sellers                                                                                    3095                                               3095                                               PASS
+row_count.geolocation                                                                                19011                                              19011                                              PASS
+row_count.orders                                                                                     99441                                              99441                                              PASS
+row_count.order_items                                                                                112650                                             112650                                             PASS
+row_count.payments                                                                                   103886                                             103886                                             PASS
+row_count.category_translation                                                                       74                                                 74                                                 PASS
+row_count.products                                                                                   32951                                              32951                                              PASS
+row_count.reviews                                                                                    98673                                              98673                                              PASS
+sum.price.raw_equals_clean                                                                           13591643.70                                        13591643.70                                        PASS
+sum.freight.raw_equals_clean                                                                         2251909.54                                         2251909.54                                         PASS
+sum.payment.raw_equals_clean                                                                         16008872.12                                        16008872.12                                        PASS
+unparseable.order_purchase_timestamp                                                                 0                                                  0                                                  PASS
+unparseable.price                                                                                    0                                                  0                                                  PASS
+unparseable.review_score                                                                             0                                                  0                                                  PASS
+funnel.raw_total                                                                                     99441                                              99441                                              PASS
+funnel.in_scope_status                                                                               98202                                              98202                                              PASS
+funnel.in_scope_and_in_window                                                                        97905                                              97905                                              PASS
+gmv.analytic_population                                                                              13449529.68                                        13449529.68                                        PASS
+freight.analytic_population                                                                          2234177.06                                         2234177.06                                         PASS
+flags.shipping_limit_anomalies                                                                       4                                                  4                                                  PASS
+flags.payments_undefined_type                                                                        3                                                  3                                                  PASS
+flags.products_missing_dimensions                                                                    2                                                  2                                                  PASS
+zip.customers_len5                                                                                   99441                                              99441                                              PASS
+zip.sellers_len5                                                                                     3095                                               3095                                               PASS
+zip.geolocation_len5                                                                                 19011                                              19011                                              PASS
+fk.order_items.order_id_in_orders                                                                    0                                                  0                                                  PASS
+fk.orders.customer_id_in_customers                                                                   0                                                  0                                                  PASS
+fk.order_items.product_id_in_products                                                                0                                                  0                                                  PASS
+fk.order_items.seller_id_in_sellers                                                                  0                                                  0                                                  PASS
+
+passed      failed      total
+----------- ----------- -----------
+30          0           30
