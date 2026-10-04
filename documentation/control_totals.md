@@ -1,6 +1,6 @@
 # Control Totals — Olist Analytics
 
-**Generated:** 2026-10-04 06:37:05.552189
+**Generated:** 2026-10-04 07:50:10.724218
 **Source:** `python/control_totals.py` (re-runnable)
 **JSON:** `documentation/control_totals.json`
 
@@ -81,15 +81,15 @@
 | Late orders | `6,531` |
 | Late rate % | `6.79` |
 
-## Reviews
+## Reviews (populations stated in key names)
 
 | Metric | Value |
 |--------|------:|
-| Orders with deduped review | `98,673` |
-| Average review score | `4.09` |
-| Average review score (late) | `2.27` |
-| Average review score (on-time) | `4.29` |
-| Late vs on-time gap | `-2.02` |
+| Orders with deduped review (all orders) | `98,673` |
+| Avg review score (all orders) | `4.09` |
+| Avg review score (delivered-in-window, late) | `2.27` |
+| Avg review score (delivered-in-window, on-time) | `4.29` |
+| Late vs on-time gap (delivered-in-window) | `-2.02` |
 
 ## Excluded Statuses
 

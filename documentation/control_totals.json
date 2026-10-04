@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-04 06:37:05.552189",
+  "generated_at": "2026-10-04 07:50:10.724218",
   "raw_level": {
     "orders_row_count": 99441,
     "order_items_row_count": 112650,
@@ -54,11 +54,11 @@
     "late_rate_pct": 6.79
   },
   "reviews": {
-    "orders_with_deduped_review": 98673,
-    "average_review_score": 4.09,
-    "average_review_score_late": 2.27,
-    "average_review_score_on_time": 4.29,
-    "late_vs_on_time_gap": -2.02
+    "orders_with_deduped_review_all_orders": 98673,
+    "average_review_score_all_orders": 4.0863,
+    "average_review_score_delivered_in_window_late": 2.2709,
+    "average_review_score_delivered_in_window_on_time": 4.291,
+    "late_vs_on_time_gap_delivered_in_window": -2.0201
   },
   "excluded_statuses": {
     "payments_total": 270423.21

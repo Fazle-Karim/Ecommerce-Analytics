@@ -41,34 +41,35 @@ performance — turning raw transactional data into actionable insights.
 ---
 
 ## Repository Structure
+
+```
 Ecommerce-Analytics/
 ├── data/
-│ ├── raw/ # Kaggle CSVs (git-ignored)
-│ └── cleaned/ # Intermediate cleaned exports (git-ignored)
-├── python/ # Reproducible profiling and analysis scripts
-│ ├── profile_data.py
-│ ├── gap_analysis.py
-│ ├── repeat_and_reconcile.py
-│ ├── diagnose_reconciliation.py
-│ ├── reconcile_payments_v2.py
-│ ├── order_funnel.py
-│ ├── late_flag_check.py
-│ ├── ab_gap_check.py
-│ ├── control_totals.py
-│ └── verify_control_totals.py
+│   ├── raw/                     # Kaggle CSVs (git-ignored)
+│   └── cleaned/                 # Intermediate cleaned exports (git-ignored)
+├── python/                      # Reproducible profiling and analysis scripts
+│   ├── profile_data.py
+│   ├── gap_analysis.py
+│   ├── repeat_and_reconcile.py
+│   ├── diagnose_reconciliation.py
+│   ├── reconcile_payments_v2.py
+│   ├── order_funnel.py
+│   ├── late_flag_check.py
+│   ├── ab_gap_check.py
+│   ├── control_totals.py
+│   └── verify_control_totals.py
 ├── sql/
-│ ├── 01_raw_tables.sql # Create database, schemas, raw tables
-│ ├── 02_load_raw.sql # TRUNCATE + BULK INSERT (Step 3)
-│ ├── 03_cleaning.sql # Type casting, dedup, translation (Step 4)
-│ └── 04_analytics_layer.sql # Star schema fact and dimension tables (Step 5)
-├── powerbi/ # .pbix report file (git-ignored, screenshots provided)
-├── dax/ # DAX measure documentation
-├── documentation/ # Data quality log, metric definitions, decision log,
-│ # control totals, and script outputs (evidence trail)
-├── screenshots/ # Report page images
+│   ├── 01_raw_tables.sql        # Create database, schemas, raw tables
+│   ├── 02_load_raw.sql          # TRUNCATE + BULK INSERT (Step 3)
+│   ├── 03_cleaning.sql          # Type casting, dedup, translation (Step 4)
+│   └── 04_analytics_layer.sql   # Star schema fact and dimension tables (Step 5)
+├── powerbi/                     # .pbix report file (git-ignored, screenshots provided)
+├── dax/                         # DAX measure documentation
+├── documentation/               # Data quality log, metric definitions, decision log,
+│                                # control totals, and script outputs (evidence trail)
+├── screenshots/                 # Report page images
 └── README.md
-
-text
+```
 
 ---
 

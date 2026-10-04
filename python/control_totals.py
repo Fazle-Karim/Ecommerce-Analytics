@@ -116,16 +116,9 @@ item_total    = round(float(merged["item_total"].sum()), 2)
 net_residual  = round(float(merged["diff"].sum()), 2)
 abs_residual  = round(float(merged["abs_diff"].sum()), 2)
 
-# Exact match = diff rounds to 0.00
-orders_exact_match = int((merged["abs_diff"] == 0.00).sum())
-
-# Differ by exactly 1 cent
-orders_differ_one_cent = int((merged["abs_diff"] == 0.01).sum())
-
-# Within 1 cent (inclusive of exact)
-orders_within_one_cent = orders_exact_match + orders_differ_one_cent
-
-# Larger than 1 cent
+orders_exact_match      = int((merged["abs_diff"] == 0.00).sum())
+orders_differ_one_cent  = int((merged["abs_diff"] == 0.01).sum())
+orders_within_one_cent  = orders_exact_match + orders_differ_one_cent
 orders_with_larger_diff = len(merged) - orders_within_one_cent
 
 # ------------------------------------------------------------------
@@ -243,20 +236,25 @@ reviews_sorted = reviews.sort_values(
 )
 reviews_dedup = reviews_sorted.drop_duplicates(subset=["order_id"], keep="first")
 
-orders_with_deduped_review = int(reviews_dedup["order_id"].nunique())
-avg_review_score_all       = round(float(reviews_dedup["review_score"].mean()), 2)
+# Population A: all orders (any status, any date), deduplicated
+orders_with_deduped_review_all_orders = int(reviews_dedup["order_id"].nunique())
+avg_review_score_all_orders = round(float(reviews_dedup["review_score"].mean()), 4)
 
+# Population B: delivered-in-window (analytic population + delivered + non-null delivery date)
 late_pop_ids = set(late_pop["order_id"])
 late_pop_reviews = reviews_dedup[reviews_dedup["order_id"].isin(late_pop_ids)].merge(
     late_pop[["order_id", "late_flag"]], on="order_id", how="left"
 )
-avg_review_score_late    = round(
-    float(late_pop_reviews[late_pop_reviews["late_flag"] == 1]["review_score"].mean() or 0), 2
+avg_review_score_delivered_in_window_late = round(
+    float(late_pop_reviews[late_pop_reviews["late_flag"] == 1]["review_score"].mean()), 4
 )
-avg_review_score_on_time = round(
-    float(late_pop_reviews[late_pop_reviews["late_flag"] == 0]["review_score"].mean() or 0), 2
+avg_review_score_delivered_in_window_on_time = round(
+    float(late_pop_reviews[late_pop_reviews["late_flag"] == 0]["review_score"].mean()), 4
 )
-late_vs_on_time_gap      = round(avg_review_score_late - avg_review_score_on_time, 2)
+late_vs_on_time_gap_delivered_in_window = round(
+    avg_review_score_delivered_in_window_late
+    - avg_review_score_delivered_in_window_on_time, 4
+)
 
 # ------------------------------------------------------------------
 # Top categories by GMV (item price only, analytic population)
@@ -317,11 +315,16 @@ totals = {
         "late_rate_pct": late_rate,
     },
     "reviews": {
-        "orders_with_deduped_review":   orders_with_deduped_review,
-        "average_review_score":         avg_review_score_all,
-        "average_review_score_late":    avg_review_score_late,
-        "average_review_score_on_time": avg_review_score_on_time,
-        "late_vs_on_time_gap":          late_vs_on_time_gap,
+        "orders_with_deduped_review_all_orders":
+            orders_with_deduped_review_all_orders,
+        "average_review_score_all_orders":
+            avg_review_score_all_orders,
+        "average_review_score_delivered_in_window_late":
+            avg_review_score_delivered_in_window_late,
+        "average_review_score_delivered_in_window_on_time":
+            avg_review_score_delivered_in_window_on_time,
+        "late_vs_on_time_gap_delivered_in_window":
+            late_vs_on_time_gap_delivered_in_window,
     },
     "excluded_statuses": {
         "payments_total": excluded_payments_total,
@@ -429,12 +432,17 @@ section("Late Rate", [
     ("Late rate %", late_rate),
 ])
 
-section("Reviews", [
-    ("Orders with deduped review",      orders_with_deduped_review),
-    ("Average review score",            avg_review_score_all),
-    ("Average review score (late)",     avg_review_score_late),
-    ("Average review score (on-time)",  avg_review_score_on_time),
-    ("Late vs on-time gap",             late_vs_on_time_gap),
+section("Reviews (populations stated in key names)", [
+    ("Orders with deduped review (all orders)",
+        orders_with_deduped_review_all_orders),
+    ("Avg review score (all orders)",
+        avg_review_score_all_orders),
+    ("Avg review score (delivered-in-window, late)",
+        avg_review_score_delivered_in_window_late),
+    ("Avg review score (delivered-in-window, on-time)",
+        avg_review_score_delivered_in_window_on_time),
+    ("Late vs on-time gap (delivered-in-window)",
+        late_vs_on_time_gap_delivered_in_window),
 ])
 
 section("Excluded Statuses", [
