@@ -1,15 +1,46 @@
 -- ===============================================================================
 -- Script: 03_cleaning_tests.sql
--- Purpose: Validate the clean layer against expected control totals.
---          Every test returns one row: test_name | expected | actual | status.
--- Run after 03_cleaning.sql.
+-- Purpose: Validate the clean layer against pinned expected values.
+--          Expected values come from clean.test_expected_values, generated
+--          from documentation/control_totals.json (no hand-entered literals).
+--          Test results are persisted to clean.test_results.
+--          The script THROWs if any test fails.
 -- ===============================================================================
+
+:on error exit
 
 USE OlistAnalytics;
 GO
 
 SET NOCOUNT ON;
 
+-- -------------------------------------------------------------------------------
+-- 1. Prepare test_results table (append-only, run-tagged)
+-- -------------------------------------------------------------------------------
+IF OBJECT_ID('clean.test_results', 'U') IS NULL
+BEGIN
+    CREATE TABLE clean.test_results (
+        result_id      INT IDENTITY(1,1) PRIMARY KEY,
+        run_id         INT            NOT NULL,
+        test_name      NVARCHAR(100)  NOT NULL,
+        expected       NVARCHAR(50)   NOT NULL,
+        actual         NVARCHAR(50)   NOT NULL,
+        status         NVARCHAR(10)   NOT NULL,
+        tested_at      DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+END
+GO
+
+-- Run id for this test execution
+IF OBJECT_ID('tempdb..#test_run_ctx') IS NOT NULL DROP TABLE #test_run_ctx;
+CREATE TABLE #test_run_ctx (run_id INT NOT NULL);
+INSERT INTO #test_run_ctx (run_id)
+SELECT ISNULL(MAX(run_id), 0) + 1 FROM clean.test_results;
+GO
+
+-- -------------------------------------------------------------------------------
+-- 2. Results staging table
+-- -------------------------------------------------------------------------------
 DECLARE @results TABLE (
     test_id     INT IDENTITY(1,1),
     test_name   NVARCHAR(100),
@@ -18,266 +49,354 @@ DECLARE @results TABLE (
     status      NVARCHAR(10)
 );
 
--- -------------------------------------------------------------------------------
--- 1. Row counts per clean table
--- -------------------------------------------------------------------------------
-INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'row_count.customers', '99441', CAST(COUNT(*) AS NVARCHAR(50)),
-       CASE WHEN COUNT(*) = 99441 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.customers;
-
-INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'row_count.sellers', '3095', CAST(COUNT(*) AS NVARCHAR(50)),
-       CASE WHEN COUNT(*) = 3095 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.sellers;
-
-INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'row_count.geolocation', '19015', CAST(COUNT(*) AS NVARCHAR(50)),
-       CASE WHEN COUNT(*) = 19015 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.geolocation;
-
-INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'row_count.orders', '99441', CAST(COUNT(*) AS NVARCHAR(50)),
-       CASE WHEN COUNT(*) = 99441 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.orders;
-
-INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'row_count.order_items', '112650', CAST(COUNT(*) AS NVARCHAR(50)),
-       CASE WHEN COUNT(*) = 112650 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.order_items;
-
-INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'row_count.payments', '103886', CAST(COUNT(*) AS NVARCHAR(50)),
-       CASE WHEN COUNT(*) = 103886 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.payments;
-
-INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'row_count.category_translation', '74', CAST(COUNT(*) AS NVARCHAR(50)),
-       CASE WHEN COUNT(*) = 74 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.category_translation;
-
-INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'row_count.products', '32951', CAST(COUNT(*) AS NVARCHAR(50)),
-       CASE WHEN COUNT(*) = 32951 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.products;
-
-INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'row_count.reviews', '98673', CAST(COUNT(*) AS NVARCHAR(50)),
-       CASE WHEN COUNT(*) = 98673 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.reviews;
+-- Helper macro-style: get expected value for a test name
+-- We'll use a JOIN to test_expected_values when evaluating each test.
 
 -- -------------------------------------------------------------------------------
--- 2. Sums: clean == raw
+-- 3. Row counts
 -- -------------------------------------------------------------------------------
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'sum.price.raw_equals_clean',
-    CAST((SELECT SUM(TRY_CAST(price AS DECIMAL(18,2))) FROM raw.order_items) AS NVARCHAR(50)),
-    CAST((SELECT SUM(price) FROM clean.order_items) AS NVARCHAR(50)),
-    CASE
-        WHEN (SELECT SUM(TRY_CAST(price AS DECIMAL(18,2))) FROM raw.order_items)
-           = (SELECT SUM(price) FROM clean.order_items)
-        THEN 'PASS' ELSE 'FAIL'
-    END;
+SELECT 'row_count.customers', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.customers) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'row_count.customers';
 
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'sum.freight.raw_equals_clean',
-    CAST((SELECT SUM(TRY_CAST(freight_value AS DECIMAL(18,2))) FROM raw.order_items) AS NVARCHAR(50)),
-    CAST((SELECT SUM(freight_value) FROM clean.order_items) AS NVARCHAR(50)),
-    CASE
-        WHEN (SELECT SUM(TRY_CAST(freight_value AS DECIMAL(18,2))) FROM raw.order_items)
-           = (SELECT SUM(freight_value) FROM clean.order_items)
-        THEN 'PASS' ELSE 'FAIL'
-    END;
+SELECT 'row_count.sellers', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.sellers) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'row_count.sellers';
 
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'sum.payment.raw_equals_clean',
-    CAST((SELECT SUM(TRY_CAST(payment_value AS DECIMAL(18,2))) FROM raw.payments) AS NVARCHAR(50)),
-    CAST((SELECT SUM(payment_value) FROM clean.payments) AS NVARCHAR(50)),
-    CASE
-        WHEN (SELECT SUM(TRY_CAST(payment_value AS DECIMAL(18,2))) FROM raw.payments)
-           = (SELECT SUM(payment_value) FROM clean.payments)
-        THEN 'PASS' ELSE 'FAIL'
-    END;
-
--- -------------------------------------------------------------------------------
--- 3. Zero unparseable values
--- -------------------------------------------------------------------------------
-INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'unparseable.order_purchase_timestamp', '0',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.orders
-WHERE order_purchase_timestamp IS NULL
-  AND order_id IN (SELECT order_id FROM raw.orders WHERE order_purchase_timestamp IS NOT NULL);
+SELECT 'row_count.geolocation', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.geolocation) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'row_count.geolocation';
 
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'unparseable.price', '0',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.order_items
-WHERE price IS NULL
-  AND order_id IN (SELECT order_id FROM raw.order_items WHERE price IS NOT NULL);
+SELECT 'row_count.orders', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.orders) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'row_count.orders';
 
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'unparseable.review_score', '0',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.reviews
-WHERE review_score IS NULL;
-
--- -------------------------------------------------------------------------------
--- 4. Funnel
--- -------------------------------------------------------------------------------
-INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'funnel.raw_total', '99441',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 99441 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.orders;
+SELECT 'row_count.order_items', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.order_items) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'row_count.order_items';
 
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'funnel.in_scope_status', '98202',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 98202 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.orders
-WHERE order_status IN ('delivered','shipped','invoiced','processing','approved');
+SELECT 'row_count.payments', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.payments) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'row_count.payments';
 
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'funnel.in_scope_and_in_window', '97905',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 97905 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.orders
-WHERE order_status IN ('delivered','shipped','invoiced','processing','approved')
-  AND order_purchase_timestamp >= '2017-01-01'
-  AND order_purchase_timestamp <  '2018-09-01';
+SELECT 'row_count.category_translation', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.category_translation) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'row_count.category_translation';
+
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'row_count.products', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.products) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'row_count.products';
+
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'row_count.reviews', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.reviews) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'row_count.reviews';
 
 -- -------------------------------------------------------------------------------
--- 5. GMV and freight for analytic population
+-- 4. Sum checks — compare clean to the pinned expected value (not raw to clean)
 -- -------------------------------------------------------------------------------
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'gmv.analytic_population', '13449529.68',
-    CAST(SUM(oi.price) AS NVARCHAR(50)),
-    CASE WHEN SUM(oi.price) = 13449529.68 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.order_items oi
-WHERE oi.order_id IN (
-    SELECT order_id FROM clean.orders
+SELECT 'sum.price.raw_equals_clean', e.expected_value,
+       CAST(CAST(t.s AS DECIMAL(18,2)) AS NVARCHAR(50)),
+       CASE WHEN CAST(t.s AS DECIMAL(18,2)) = CAST(e.expected_value AS DECIMAL(18,2))
+            THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT SUM(price) AS s FROM clean.order_items) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'sum.price.raw_equals_clean';
+
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'sum.freight.raw_equals_clean', e.expected_value,
+       CAST(CAST(t.s AS DECIMAL(18,2)) AS NVARCHAR(50)),
+       CASE WHEN CAST(t.s AS DECIMAL(18,2)) = CAST(e.expected_value AS DECIMAL(18,2))
+            THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT SUM(freight_value) AS s FROM clean.order_items) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'sum.freight.raw_equals_clean';
+
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'sum.payment.raw_equals_clean', e.expected_value,
+       CAST(CAST(t.s AS DECIMAL(18,2)) AS NVARCHAR(50)),
+       CASE WHEN CAST(t.s AS DECIMAL(18,2)) = CAST(e.expected_value AS DECIMAL(18,2))
+            THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT SUM(payment_value) AS s FROM clean.payments) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'sum.payment.raw_equals_clean';
+
+-- -------------------------------------------------------------------------------
+-- 5. Unparseable-value checks
+-- -------------------------------------------------------------------------------
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'unparseable.order_purchase_timestamp', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS n FROM clean.orders
+    WHERE order_purchase_timestamp IS NULL
+      AND order_id IN (SELECT order_id FROM raw.orders WHERE order_purchase_timestamp IS NOT NULL)
+) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'unparseable.order_purchase_timestamp';
+
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'unparseable.price', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS n FROM clean.order_items
+    WHERE price IS NULL
+      AND order_id IN (SELECT order_id FROM raw.order_items WHERE price IS NOT NULL)
+) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'unparseable.price';
+
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'unparseable.review_score', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.reviews WHERE review_score IS NULL) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'unparseable.review_score';
+
+-- -------------------------------------------------------------------------------
+-- 6. Funnel
+-- -------------------------------------------------------------------------------
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'funnel.raw_total', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.orders) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'funnel.raw_total';
+
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'funnel.in_scope_status', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS n FROM clean.orders
+    WHERE order_status IN ('delivered','shipped','invoiced','processing','approved')
+) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'funnel.in_scope_status';
+
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'funnel.in_scope_and_in_window', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS n FROM clean.orders
     WHERE order_status IN ('delivered','shipped','invoiced','processing','approved')
       AND order_purchase_timestamp >= '2017-01-01'
       AND order_purchase_timestamp <  '2018-09-01'
-);
-
-INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'freight.analytic_population', '2234177.06',
-    CAST(SUM(oi.freight_value) AS NVARCHAR(50)),
-    CASE WHEN SUM(oi.freight_value) = 2234177.06 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.order_items oi
-WHERE oi.order_id IN (
-    SELECT order_id FROM clean.orders
-    WHERE order_status IN ('delivered','shipped','invoiced','processing','approved')
-      AND order_purchase_timestamp >= '2017-01-01'
-      AND order_purchase_timestamp <  '2018-09-01'
-);
+) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'funnel.in_scope_and_in_window';
 
 -- -------------------------------------------------------------------------------
--- 6. Flag counts
+-- 7. GMV, freight
 -- -------------------------------------------------------------------------------
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'flags.shipping_limit_anomalies', '4',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 4 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.order_items
-WHERE flag_shipping_limit_anomaly = 1;
+SELECT 'gmv.analytic_population', e.expected_value,
+       CAST(CAST(t.s AS DECIMAL(18,2)) AS NVARCHAR(50)),
+       CASE WHEN CAST(t.s AS DECIMAL(18,2)) = CAST(e.expected_value AS DECIMAL(18,2))
+            THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT SUM(oi.price) AS s FROM clean.order_items oi
+    WHERE oi.order_id IN (
+        SELECT order_id FROM clean.orders
+        WHERE order_status IN ('delivered','shipped','invoiced','processing','approved')
+          AND order_purchase_timestamp >= '2017-01-01'
+          AND order_purchase_timestamp <  '2018-09-01'
+    )
+) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'gmv.analytic_population';
 
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'flags.payments_undefined_type', '3',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 3 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.payments
-WHERE flag_undefined_type = 1;
-
-INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'flags.products_missing_dimensions', '2',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 2 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.products
-WHERE flag_missing_dimensions = 1;
+SELECT 'freight.analytic_population', e.expected_value,
+       CAST(CAST(t.s AS DECIMAL(18,2)) AS NVARCHAR(50)),
+       CASE WHEN CAST(t.s AS DECIMAL(18,2)) = CAST(e.expected_value AS DECIMAL(18,2))
+            THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT SUM(oi.freight_value) AS s FROM clean.order_items oi
+    WHERE oi.order_id IN (
+        SELECT order_id FROM clean.orders
+        WHERE order_status IN ('delivered','shipped','invoiced','processing','approved')
+          AND order_purchase_timestamp >= '2017-01-01'
+          AND order_purchase_timestamp <  '2018-09-01'
+    )
+) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'freight.analytic_population';
 
 -- -------------------------------------------------------------------------------
--- 7. Zip prefix length check
+-- 8. Flags
 -- -------------------------------------------------------------------------------
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'zip.customers_len5', '99441',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 99441 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.customers
-WHERE LEN(customer_zip_code_prefix) = 5;
+SELECT 'flags.shipping_limit_anomalies', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.order_items WHERE flag_shipping_limit_anomaly = 1) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'flags.shipping_limit_anomalies';
 
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'zip.sellers_len5', '3095',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 3095 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.sellers
-WHERE LEN(seller_zip_code_prefix) = 5;
+SELECT 'flags.payments_undefined_type', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.payments WHERE flag_undefined_type = 1) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'flags.payments_undefined_type';
 
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'zip.geolocation_len5', '19015',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 19015 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.geolocation
-WHERE LEN(geolocation_zip_code_prefix) = 5;
+SELECT 'flags.products_missing_dimensions', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.products WHERE flag_missing_dimensions = 1) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'flags.products_missing_dimensions';
 
 -- -------------------------------------------------------------------------------
--- 8. Foreign keys
+-- 9. Zip length checks
 -- -------------------------------------------------------------------------------
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'fk.order_items.order_id_in_orders', '0',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.order_items oi
-WHERE NOT EXISTS (SELECT 1 FROM clean.orders o WHERE o.order_id = oi.order_id);
+SELECT 'zip.customers_len5', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.customers WHERE LEN(customer_zip_code_prefix) = 5) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'zip.customers_len5';
 
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'fk.orders.customer_id_in_customers', '0',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.orders o
-WHERE NOT EXISTS (SELECT 1 FROM clean.customers c WHERE c.customer_id = o.customer_id);
+SELECT 'zip.sellers_len5', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.sellers WHERE LEN(seller_zip_code_prefix) = 5) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'zip.sellers_len5';
 
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'fk.order_items.product_id_in_products', '0',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.order_items oi
-WHERE NOT EXISTS (SELECT 1 FROM clean.products p WHERE p.product_id = oi.product_id);
-
-INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'fk.order_items.seller_id_in_sellers', '0',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.order_items oi
-WHERE NOT EXISTS (SELECT 1 FROM clean.sellers s WHERE s.seller_id = oi.seller_id);
+SELECT 'zip.geolocation_len5', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.geolocation WHERE LEN(geolocation_zip_code_prefix) = 5) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'zip.geolocation_len5';
 
 -- -------------------------------------------------------------------------------
--- 9. Geolocation identity test
---     raw rows = kept rows + filtered rows in kept prefixes + rows in dropped prefixes
---     With the new policy (no dropped prefixes), dropped = 0.
+-- 10. FK integrity
 -- -------------------------------------------------------------------------------
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'geolocation.identity_raw_equals_clean_and_filtered', '1000163',
-    CAST((SELECT SUM(sample_count + filtered_count) FROM clean.geolocation) AS NVARCHAR(50)),
-    CASE
-        WHEN (SELECT SUM(sample_count + filtered_count) FROM clean.geolocation) = 1000163
-        THEN 'PASS' ELSE 'FAIL'
-    END;
+SELECT 'fk.order_items.order_id_in_orders', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS n FROM clean.order_items oi
+    WHERE NOT EXISTS (SELECT 1 FROM clean.orders o WHERE o.order_id = oi.order_id)
+) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'fk.order_items.order_id_in_orders';
 
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'geolocation.prefixes_missing_coords', '4',
-    CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 4 THEN 'PASS' ELSE 'FAIL' END
-FROM clean.geolocation
-WHERE is_coordinates_missing = 1;
+SELECT 'fk.orders.customer_id_in_customers', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS n FROM clean.orders o
+    WHERE NOT EXISTS (SELECT 1 FROM clean.customers c WHERE c.customer_id = o.customer_id)
+) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'fk.orders.customer_id_in_customers';
+
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'fk.order_items.product_id_in_products', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS n FROM clean.order_items oi
+    WHERE NOT EXISTS (SELECT 1 FROM clean.products p WHERE p.product_id = oi.product_id)
+) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'fk.order_items.product_id_in_products';
+
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'fk.order_items.seller_id_in_sellers', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS n FROM clean.order_items oi
+    WHERE NOT EXISTS (SELECT 1 FROM clean.sellers s WHERE s.seller_id = oi.seller_id)
+) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'fk.order_items.seller_id_in_sellers';
+
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'fk.payments.order_id_in_orders', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS n FROM clean.payments p
+    WHERE NOT EXISTS (SELECT 1 FROM clean.orders o WHERE o.order_id = p.order_id)
+) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'fk.payments.order_id_in_orders';
+
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'fk.reviews.order_id_in_orders', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS n FROM clean.reviews r
+    WHERE NOT EXISTS (SELECT 1 FROM clean.orders o WHERE o.order_id = r.order_id)
+) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'fk.reviews.order_id_in_orders';
 
 -- -------------------------------------------------------------------------------
--- Report
+-- 11. Geolocation identity + missing coords
+-- -------------------------------------------------------------------------------
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'geolocation.identity_raw_equals_clean_and_filtered', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT SUM(sample_count + filtered_count) AS n FROM clean.geolocation
+) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'geolocation.identity_raw_equals_clean_and_filtered';
+
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'geolocation.prefixes_missing_coords', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM clean.geolocation WHERE is_coordinates_missing = 1) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'geolocation.prefixes_missing_coords';
+
+-- -------------------------------------------------------------------------------
+-- 12. Category: no product with a non-null raw category maps to unknown
+-- -------------------------------------------------------------------------------
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'category.no_unknown_from_nonnull_raw', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS n
+    FROM clean.products p
+    INNER JOIN raw.products r ON r.product_id = p.product_id
+    WHERE r.product_category_name IS NOT NULL
+      AND p.product_category_name = 'unknown'
+) t
+CROSS JOIN clean.test_expected_values e
+WHERE e.test_name = 'category.no_unknown_from_nonnull_raw';
+
+-- -------------------------------------------------------------------------------
+-- 13. Show results
 -- -------------------------------------------------------------------------------
 SELECT test_name, expected, actual, status
 FROM @results
@@ -289,7 +408,19 @@ SELECT
     COUNT(*) AS total
 FROM @results;
 
--- Fail loudly if any test failed
+-- -------------------------------------------------------------------------------
+-- 14. Persist to clean.test_results
+-- -------------------------------------------------------------------------------
+DECLARE @test_run_id INT = (SELECT run_id FROM #test_run_ctx);
+INSERT INTO clean.test_results (run_id, test_name, expected, actual, status)
+SELECT @test_run_id, test_name, expected, actual, status
+FROM @results;
+
+-- -------------------------------------------------------------------------------
+-- 15. Fail loudly if any test failed
+-- -------------------------------------------------------------------------------
 IF EXISTS (SELECT 1 FROM @results WHERE status = 'FAIL')
     THROW 51000, 'One or more cleaning tests failed. See results above.', 1;
+
+PRINT 'All cleaning tests passed.';
 GO
