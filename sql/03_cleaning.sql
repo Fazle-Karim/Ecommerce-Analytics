@@ -279,3 +279,168 @@ SELECT rule_id, table_name, rows_in, rows_out, rows_flagged
 FROM clean.cleaning_log
 ORDER BY log_id;
 GO
+
+-- ===============================================================================
+-- SECTION 3: Transaction tables
+-- ===============================================================================
+
+-- -------------------------------------------------------------------------------
+-- 3.1 clean.orders
+-- -------------------------------------------------------------------------------
+IF OBJECT_ID('clean.orders', 'U') IS NOT NULL DROP TABLE clean.orders;
+
+CREATE TABLE clean.orders (
+    order_id                        NVARCHAR(50)  NOT NULL,
+    customer_id                     NVARCHAR(50)  NOT NULL,
+    order_status                    NVARCHAR(50)  NOT NULL,
+    order_purchase_timestamp        DATETIME2     NULL,
+    order_approved_at               DATETIME2     NULL,
+    order_delivered_carrier_date    DATETIME2     NULL,
+    order_delivered_customer_date   DATETIME2     NULL,
+    order_estimated_delivery_date   DATETIME2     NULL
+);
+
+INSERT INTO clean.orders
+    (order_id, customer_id, order_status,
+     order_purchase_timestamp, order_approved_at,
+     order_delivered_carrier_date, order_delivered_customer_date,
+     order_estimated_delivery_date)
+SELECT
+    order_id,
+    customer_id,
+    LOWER(LTRIM(RTRIM(order_status))),
+    TRY_CONVERT(DATETIME2, order_purchase_timestamp),
+    TRY_CONVERT(DATETIME2, order_approved_at),
+    TRY_CONVERT(DATETIME2, order_delivered_carrier_date),
+    TRY_CONVERT(DATETIME2, order_delivered_customer_date),
+    TRY_CONVERT(DATETIME2, order_estimated_delivery_date)
+FROM raw.orders;
+
+DECLARE @ord_in  INT = (SELECT COUNT(*) FROM raw.orders);
+DECLARE @ord_out INT = (SELECT COUNT(*) FROM clean.orders);
+EXEC clean.usp_log_rule
+    @rule_id          = 'ORDERS_TYPED',
+    @rule_description = 'Type cast timestamps to DATETIME2, lower status',
+    @table_name       = 'orders',
+    @rows_in          = @ord_in,
+    @rows_out         = @ord_out,
+    @rows_flagged     = 0;
+GO
+
+PRINT 'clean.orders built.';
+GO
+
+-- -------------------------------------------------------------------------------
+-- 3.2 clean.order_items
+--    Includes a flag for shipping_limit_date > 2018-12-31 (4 known anomalies).
+-- -------------------------------------------------------------------------------
+IF OBJECT_ID('clean.order_items', 'U') IS NOT NULL DROP TABLE clean.order_items;
+
+CREATE TABLE clean.order_items (
+    order_id            NVARCHAR(50)  NOT NULL,
+    order_item_id       INT           NOT NULL,
+    product_id          NVARCHAR(50)  NOT NULL,
+    seller_id           NVARCHAR(50)  NOT NULL,
+    shipping_limit_date DATETIME2     NULL,
+    price               DECIMAL(18,2) NULL,
+    freight_value       DECIMAL(18,2) NULL,
+    flag_shipping_limit_anomaly BIT NOT NULL DEFAULT 0
+);
+
+INSERT INTO clean.order_items
+    (order_id, order_item_id, product_id, seller_id,
+     shipping_limit_date, price, freight_value,
+     flag_shipping_limit_anomaly)
+SELECT
+    order_id,
+    TRY_CONVERT(INT, order_item_id),
+    product_id,
+    seller_id,
+    TRY_CONVERT(DATETIME2, shipping_limit_date),
+    TRY_CONVERT(DECIMAL(18,2), price),
+    TRY_CONVERT(DECIMAL(18,2), freight_value),
+    CASE
+        WHEN TRY_CONVERT(DATETIME2, shipping_limit_date) > '2018-12-31' THEN 1
+        ELSE 0
+    END
+FROM raw.order_items;
+
+DECLARE @oi_in       INT = (SELECT COUNT(*) FROM raw.order_items);
+DECLARE @oi_out      INT = (SELECT COUNT(*) FROM clean.order_items);
+DECLARE @oi_flagged  INT = (SELECT COUNT(*) FROM clean.order_items WHERE flag_shipping_limit_anomaly = 1);
+EXEC clean.usp_log_rule
+    @rule_id          = 'ORDER_ITEMS_TYPED',
+    @rule_description = 'Type cast IDs/amounts/timestamps; flag shipping_limit_date > 2018-12-31',
+    @table_name       = 'order_items',
+    @rows_in          = @oi_in,
+    @rows_out         = @oi_out,
+    @rows_flagged     = @oi_flagged;
+GO
+
+PRINT 'clean.order_items built.';
+GO
+
+-- -------------------------------------------------------------------------------
+-- 3.3 clean.payments
+--    Keeps raw grain (one row per payment). Aggregation to order level happens
+--    in analytics. Rule flag: not_defined payment_type (3 known rows).
+-- -------------------------------------------------------------------------------
+IF OBJECT_ID('clean.payments', 'U') IS NOT NULL DROP TABLE clean.payments;
+
+CREATE TABLE clean.payments (
+    order_id                NVARCHAR(50)  NOT NULL,
+    payment_sequential      INT           NOT NULL,
+    payment_type            NVARCHAR(50)  NOT NULL,
+    payment_installments    INT           NULL,
+    payment_value           DECIMAL(18,2) NULL,
+    flag_undefined_type     BIT           NOT NULL DEFAULT 0
+);
+
+INSERT INTO clean.payments
+    (order_id, payment_sequential, payment_type,
+     payment_installments, payment_value,
+     flag_undefined_type)
+SELECT
+    order_id,
+    TRY_CONVERT(INT, payment_sequential),
+    LOWER(LTRIM(RTRIM(payment_type))),
+    TRY_CONVERT(INT, payment_installments),
+    TRY_CONVERT(DECIMAL(18,2), payment_value),
+    CASE WHEN LOWER(LTRIM(RTRIM(payment_type))) = 'not_defined' THEN 1 ELSE 0 END
+FROM raw.payments;
+
+DECLARE @pay_in       INT = (SELECT COUNT(*) FROM raw.payments);
+DECLARE @pay_out      INT = (SELECT COUNT(*) FROM clean.payments);
+DECLARE @pay_flagged  INT = (SELECT COUNT(*) FROM clean.payments WHERE flag_undefined_type = 1);
+EXEC clean.usp_log_rule
+    @rule_id          = 'PAYMENTS_TYPED',
+    @rule_description = 'Type cast sequential/installments/amount; flag not_defined payment_type',
+    @table_name       = 'payments',
+    @rows_in          = @pay_in,
+    @rows_out         = @pay_out,
+    @rows_flagged     = @pay_flagged;
+GO
+
+PRINT 'clean.payments built.';
+GO
+
+-- -------------------------------------------------------------------------------
+-- 3.4 Verify
+-- -------------------------------------------------------------------------------
+SELECT 'clean.orders'        AS table_name, COUNT(*) AS rows FROM clean.orders
+UNION ALL SELECT 'clean.order_items',       COUNT(*) FROM clean.order_items
+UNION ALL SELECT 'clean.payments',          COUNT(*) FROM clean.payments;
+GO
+
+-- Flag counts
+SELECT
+    (SELECT COUNT(*) FROM clean.order_items WHERE flag_shipping_limit_anomaly = 1) AS order_items_shipping_anomalies,
+    (SELECT COUNT(*) FROM clean.payments    WHERE flag_undefined_type = 1)          AS payments_undefined_type;
+GO
+
+-- Latest run's log
+SELECT rule_id, table_name, rows_in, rows_out, rows_flagged
+FROM clean.cleaning_log
+WHERE run_id = (SELECT MAX(run_id) FROM clean.cleaning_log)
+ORDER BY log_id;
+GO
