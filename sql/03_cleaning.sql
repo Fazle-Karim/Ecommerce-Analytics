@@ -51,7 +51,6 @@ GO
 
 -- -------------------------------------------------------------------------------
 -- 4. Helper: append a rule log entry for this run
---    Used by every subsequent cleaning block.
 -- -------------------------------------------------------------------------------
 IF OBJECT_ID('clean.usp_log_rule', 'P') IS NOT NULL
     DROP PROCEDURE clean.usp_log_rule;
@@ -76,8 +75,9 @@ BEGIN
          @rows_in, @rows_out, @rows_flagged);
 END
 GO
+
 -- -------------------------------------------------------------------------------
--- Helper: Title Case a string ("hello world" -> "Hello World")
+-- Helper: Title Case a string ("hello_world" -> "Hello World")
 -- -------------------------------------------------------------------------------
 IF OBJECT_ID('dbo.TitleCase', 'FN') IS NOT NULL
     DROP FUNCTION dbo.TitleCase;
@@ -87,7 +87,7 @@ CREATE FUNCTION dbo.TitleCase (@input NVARCHAR(200))
 RETURNS NVARCHAR(200)
 AS
 BEGIN
-    DECLARE @output NVARCHAR(200) = LOWER(@input);
+    DECLARE @output NVARCHAR(200) = REPLACE(LOWER(@input), '_', ' ');
     DECLARE @i INT = 1;
     DECLARE @len INT = LEN(@output);
     DECLARE @prev_was_space BIT = 1;
@@ -106,18 +106,8 @@ BEGIN
     RETURN @output;
 END
 GO
-PRINT 'Clean infrastructure ready.';
-GO
 
--- -------------------------------------------------------------------------------
--- 5. Verify
--- -------------------------------------------------------------------------------
-SELECT
-    (SELECT COUNT(*) FROM clean.cleaning_log) AS log_rows,
-    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES
-     WHERE TABLE_SCHEMA = 'clean' AND TABLE_NAME = 'cleaning_log') AS log_table_exists,
-    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.ROUTINES
-     WHERE ROUTINE_SCHEMA = 'clean' AND ROUTINE_NAME = 'usp_log_rule') AS proc_exists;
+PRINT 'Clean infrastructure ready.';
 GO
 
 -- ===============================================================================
@@ -125,18 +115,12 @@ GO
 -- ===============================================================================
 
 -- -------------------------------------------------------------------------------
--- 2.1 Normalize zip prefixes (5 digits, zero-padded) — resolve ambiguity
--- -------------------------------------------------------------------------------
--- First, confirm the length distribution. If any prefix has < 5 chars, pad it.
--- We handle all three tables identically so joins don't silently fail.
-
--- -------------------------------------------------------------------------------
--- 2.2 clean.customers
+-- 2.1 clean.customers
 -- -------------------------------------------------------------------------------
 IF OBJECT_ID('clean.customers', 'U') IS NOT NULL DROP TABLE clean.customers;
 
 CREATE TABLE clean.customers (
-    customer_id                 NVARCHAR(50)  NOT NULL,
+    customer_id                 NVARCHAR(50)  NOT NULL PRIMARY KEY,
     customer_unique_id          NVARCHAR(50)  NOT NULL,
     customer_zip_code_prefix    NVARCHAR(5)   NOT NULL,
     customer_city               NVARCHAR(100) NOT NULL,
@@ -169,12 +153,12 @@ PRINT 'clean.customers built.';
 GO
 
 -- -------------------------------------------------------------------------------
--- 2.3 clean.sellers
+-- 2.2 clean.sellers
 -- -------------------------------------------------------------------------------
 IF OBJECT_ID('clean.sellers', 'U') IS NOT NULL DROP TABLE clean.sellers;
 
 CREATE TABLE clean.sellers (
-    seller_id                   NVARCHAR(50)  NOT NULL,
+    seller_id                   NVARCHAR(50)  NOT NULL PRIMARY KEY,
     seller_zip_code_prefix      NVARCHAR(5)   NOT NULL,
     seller_city                 NVARCHAR(100) NOT NULL,
     seller_state                NVARCHAR(2)   NOT NULL
@@ -204,36 +188,29 @@ PRINT 'clean.sellers built.';
 GO
 
 -- -------------------------------------------------------------------------------
--- 2.4 clean.geolocation
---    Aggregate to one row per zip prefix, averaging lat/lng.
---    --    Filter coordinates outside Brazil's bounding box (-34.0 to 5.5 lat, -74.0 to -32.0 lng).
---    The eastern edge is -32.0 (not -34.0) to include Fernando de Noronha at ~-32.42 lng,
---    which is legitimately Brazilian.
+-- 2.3 clean.geolocation
 -- -------------------------------------------------------------------------------
 IF OBJECT_ID('clean.geolocation', 'U') IS NOT NULL DROP TABLE clean.geolocation;
 
 CREATE TABLE clean.geolocation (
-    geolocation_zip_code_prefix    NVARCHAR(5)    NOT NULL PRIMARY KEY,
-    geolocation_lat_avg            DECIMAL(10,6)  NOT NULL,
-    geolocation_lng_avg            DECIMAL(10,6)  NOT NULL,
-    geolocation_city               NVARCHAR(100)  NULL,
-    geolocation_state              NVARCHAR(2)    NULL,
-    sample_count                   INT            NOT NULL,
-    filtered_count                 INT            NOT NULL DEFAULT 0
+    geolocation_zip_code_prefix  NVARCHAR(5)    NOT NULL PRIMARY KEY,
+    geolocation_lat_avg          DECIMAL(10,6)  NULL,
+    geolocation_lng_avg          DECIMAL(10,6)  NULL,
+    sample_count                 INT            NOT NULL,
+    filtered_count               INT            NOT NULL DEFAULT 0,
+    is_coordinates_missing       BIT            NOT NULL DEFAULT 0
 );
 
 ;WITH normalized AS (
     SELECT
         RIGHT('00000' + LTRIM(RTRIM(geolocation_zip_code_prefix)), 5) AS zip5,
         TRY_CAST(geolocation_lat AS DECIMAL(10,6)) AS lat,
-        TRY_CAST(geolocation_lng AS DECIMAL(10,6)) AS lng,
-        LOWER(LTRIM(RTRIM(geolocation_city)))      AS city,
-        UPPER(LTRIM(RTRIM(geolocation_state)))     AS state
+        TRY_CAST(geolocation_lng AS DECIMAL(10,6)) AS lng
     FROM raw.geolocation
 ),
 filtered AS (
     SELECT
-        zip5, lat, lng, city, state,
+        zip5, lat, lng,
         CASE
             WHEN lat IS NULL OR lng IS NULL THEN 1
             WHEN lat < -34.0 OR lat > 5.5 OR lng < -74.0 OR lng > -32.0 THEN 1
@@ -246,8 +223,6 @@ aggregated AS (
         zip5,
         AVG(CASE WHEN is_outside = 0 THEN lat END) AS lat_avg,
         AVG(CASE WHEN is_outside = 0 THEN lng END) AS lng_avg,
-        MAX(city)  AS city,
-        MAX(state) AS state,
         SUM(CASE WHEN is_outside = 0 THEN 1 ELSE 0 END) AS sample_count,
         SUM(is_outside) AS filtered_count
     FROM filtered
@@ -255,58 +230,39 @@ aggregated AS (
 )
 INSERT INTO clean.geolocation
     (geolocation_zip_code_prefix, geolocation_lat_avg, geolocation_lng_avg,
-     geolocation_city, geolocation_state, sample_count, filtered_count)
+     sample_count, filtered_count, is_coordinates_missing)
 SELECT
-    zip5, lat_avg, lng_avg, city, state, sample_count, filtered_count
-FROM aggregated
-WHERE lat_avg IS NOT NULL AND lng_avg IS NOT NULL;
+    zip5,
+    lat_avg,
+    lng_avg,
+    sample_count,
+    filtered_count,
+    CASE WHEN lat_avg IS NULL OR lng_avg IS NULL THEN 1 ELSE 0 END
+FROM aggregated;
 
-DECLARE @geo_in       INT = (SELECT COUNT(*) FROM raw.geolocation);
-DECLARE @geo_out      INT = (SELECT COUNT(*) FROM clean.geolocation);
-DECLARE @geo_filtered INT = (SELECT ISNULL(SUM(filtered_count), 0) FROM clean.geolocation);
-DECLARE @geo_dropped  INT = @geo_in - (SELECT ISNULL(SUM(sample_count + filtered_count), 0) FROM clean.geolocation);
+DECLARE @geo_in              INT = (SELECT COUNT(*) FROM raw.geolocation);
+DECLARE @geo_out             INT = (SELECT COUNT(*) FROM clean.geolocation);
+DECLARE @geo_filtered        INT = (SELECT ISNULL(SUM(filtered_count), 0) FROM clean.geolocation);
+DECLARE @geo_missing_coords  INT = (SELECT COUNT(*) FROM clean.geolocation WHERE is_coordinates_missing = 1);
 
 EXEC clean.usp_log_rule
     @rule_id          = 'GEOLOCATION_DEDUP',
-    @rule_description = 'Aggregate to one row per zip; filter coordinates outside Brazil bbox',
+    @rule_description = 'Aggregate per zip; filter coords outside Brazil bbox; keep prefixes with no valid coords',
     @table_name       = 'geolocation',
     @rows_in          = @geo_in,
     @rows_out         = @geo_out,
     @rows_flagged     = @geo_filtered;
-GO
--- Log the prefixes entirely dropped (all coordinates outside Brazil bbox)
-DECLARE @dropped_prefixes INT = (
-    SELECT COUNT(DISTINCT RIGHT('00000' + LTRIM(RTRIM(r.geolocation_zip_code_prefix)), 5))
-    FROM raw.geolocation r
-    WHERE NOT EXISTS (
-        SELECT 1 FROM clean.geolocation c
-        WHERE c.geolocation_zip_code_prefix =
-              RIGHT('00000' + LTRIM(RTRIM(r.geolocation_zip_code_prefix)), 5)
-    )
-);
 
 EXEC clean.usp_log_rule
-    @rule_id          = 'GEOLOCATION_DROPPED_PREFIXES',
-    @rule_description = 'Zip prefixes excluded: all coordinates outside Brazil bounding box',
+    @rule_id          = 'GEOLOCATION_MISSING_COORDS',
+    @rule_description = 'Zip prefixes retained with NULL coordinates (all source coords outside bbox)',
     @table_name       = 'geolocation',
-    @rows_in          = @dropped_prefixes,
-    @rows_out         = 0,
-    @rows_flagged     = @dropped_prefixes;
+    @rows_in          = @geo_missing_coords,
+    @rows_out         = @geo_missing_coords,
+    @rows_flagged     = @geo_missing_coords;
 GO
+
 PRINT 'clean.geolocation built.';
-GO
-
--- -------------------------------------------------------------------------------
--- 2.5 Verify
--- -------------------------------------------------------------------------------
-SELECT 'clean.customers'   AS table_name, COUNT(*) AS rows FROM clean.customers
-UNION ALL SELECT 'clean.sellers',      COUNT(*) FROM clean.sellers
-UNION ALL SELECT 'clean.geolocation',  COUNT(*) FROM clean.geolocation;
-GO
-
-SELECT rule_id, table_name, rows_in, rows_out, rows_flagged
-FROM clean.cleaning_log
-ORDER BY log_id;
 GO
 
 -- ===============================================================================
@@ -319,7 +275,7 @@ GO
 IF OBJECT_ID('clean.orders', 'U') IS NOT NULL DROP TABLE clean.orders;
 
 CREATE TABLE clean.orders (
-    order_id                        NVARCHAR(50)  NOT NULL,
+    order_id                        NVARCHAR(50)  NOT NULL PRIMARY KEY,
     customer_id                     NVARCHAR(50)  NOT NULL,
     order_status                    NVARCHAR(50)  NOT NULL,
     order_purchase_timestamp        DATETIME2     NULL,
@@ -361,7 +317,6 @@ GO
 
 -- -------------------------------------------------------------------------------
 -- 3.2 clean.order_items
---    Includes a flag for shipping_limit_date > 2018-12-31 (4 known anomalies).
 -- -------------------------------------------------------------------------------
 IF OBJECT_ID('clean.order_items', 'U') IS NOT NULL DROP TABLE clean.order_items;
 
@@ -373,7 +328,8 @@ CREATE TABLE clean.order_items (
     shipping_limit_date DATETIME2     NULL,
     price               DECIMAL(18,2) NULL,
     freight_value       DECIMAL(18,2) NULL,
-    flag_shipping_limit_anomaly BIT NOT NULL DEFAULT 0
+    flag_shipping_limit_anomaly BIT NOT NULL DEFAULT 0,
+    CONSTRAINT PK_order_items PRIMARY KEY (order_id, order_item_id)
 );
 
 INSERT INTO clean.order_items
@@ -411,8 +367,6 @@ GO
 
 -- -------------------------------------------------------------------------------
 -- 3.3 clean.payments
---    Keeps raw grain (one row per payment). Aggregation to order level happens
---    in analytics. Rule flag: not_defined payment_type (3 known rows).
 -- -------------------------------------------------------------------------------
 IF OBJECT_ID('clean.payments', 'U') IS NOT NULL DROP TABLE clean.payments;
 
@@ -422,7 +376,8 @@ CREATE TABLE clean.payments (
     payment_type            NVARCHAR(50)  NOT NULL,
     payment_installments    INT           NULL,
     payment_value           DECIMAL(18,2) NULL,
-    flag_undefined_type     BIT           NOT NULL DEFAULT 0
+    flag_undefined_type     BIT           NOT NULL DEFAULT 0,
+    CONSTRAINT PK_payments PRIMARY KEY (order_id, payment_sequential)
 );
 
 INSERT INTO clean.payments
@@ -453,35 +408,12 @@ GO
 PRINT 'clean.payments built.';
 GO
 
--- -------------------------------------------------------------------------------
--- 3.4 Verify
--- -------------------------------------------------------------------------------
-SELECT 'clean.orders'        AS table_name, COUNT(*) AS rows FROM clean.orders
-UNION ALL SELECT 'clean.order_items',       COUNT(*) FROM clean.order_items
-UNION ALL SELECT 'clean.payments',          COUNT(*) FROM clean.payments;
-GO
-
--- Flag counts
-SELECT
-    (SELECT COUNT(*) FROM clean.order_items WHERE flag_shipping_limit_anomaly = 1) AS order_items_shipping_anomalies,
-    (SELECT COUNT(*) FROM clean.payments    WHERE flag_undefined_type = 1)          AS payments_undefined_type;
-GO
-
--- Latest run's log
-SELECT rule_id, table_name, rows_in, rows_out, rows_flagged
-FROM clean.cleaning_log
-WHERE run_id = (SELECT MAX(run_id) FROM clean.cleaning_log)
-ORDER BY log_id;
-GO
-
 -- ===============================================================================
 -- SECTION 4: Dimension tables
 -- ===============================================================================
 
 -- -------------------------------------------------------------------------------
 -- 4.1 clean.category_translation
---     Base 71 rows from raw + 2 manual overrides = 73 rows.
---     Add display_name column for the report.
 -- -------------------------------------------------------------------------------
 IF OBJECT_ID('clean.category_translation', 'U') IS NOT NULL DROP TABLE clean.category_translation;
 
@@ -492,18 +424,17 @@ CREATE TABLE clean.category_translation (
     is_manual_override              BIT           NOT NULL DEFAULT 0
 );
 
--- Base translations from raw
+-- Base translations from raw (71 rows)
 INSERT INTO clean.category_translation
     (product_category_name, product_category_name_english, display_name, is_manual_override)
 SELECT
     LOWER(LTRIM(RTRIM(product_category_name))),
     LOWER(LTRIM(RTRIM(product_category_name_english))),
-    -- Display name: Title Case the English name, with the pc_gamer override applied later
     dbo.TitleCase(LOWER(LTRIM(RTRIM(product_category_name_english)))),
     0
 FROM raw.category_translation;
 
--- Manual overrides (2 rows)
+-- Manual overrides for missing translations (2 rows)
 INSERT INTO clean.category_translation
     (product_category_name, product_category_name_english, display_name, is_manual_override)
 VALUES
@@ -512,7 +443,40 @@ VALUES
      'kitchen_food_prep_portables',
      'Kitchen & Food Prep Portables', 1);
 
--- The 'unknown' bucket for missing categories
+-- Fix 5 English typos from the source CSV.
+-- Note: typos are in the ENGLISH name; filter on product_category_name_english.
+
+UPDATE clean.category_translation
+SET product_category_name_english = 'fashion_female_clothing',
+    display_name                  = dbo.TitleCase('fashion_female_clothing'),
+    is_manual_override            = 1
+WHERE product_category_name_english = 'fashio_female_clothing';
+
+UPDATE clean.category_translation
+SET product_category_name_english = 'construction_tools_garden',
+    display_name                  = dbo.TitleCase('construction_tools_garden'),
+    is_manual_override            = 1
+WHERE product_category_name_english = 'costruction_tools_garden';
+
+UPDATE clean.category_translation
+SET product_category_name_english = 'construction_tools_tools',
+    display_name                  = dbo.TitleCase('construction_tools_tools'),
+    is_manual_override            = 1
+WHERE product_category_name_english = 'costruction_tools_tools';
+
+UPDATE clean.category_translation
+SET product_category_name_english = 'home_comfort',
+    display_name                  = dbo.TitleCase('home_comfort'),
+    is_manual_override            = 1
+WHERE product_category_name_english = 'home_confort';
+
+UPDATE clean.category_translation
+SET product_category_name_english = 'arts_and_craftsmanship',
+    display_name                  = dbo.TitleCase('arts_and_craftsmanship'),
+    is_manual_override            = 1
+WHERE product_category_name_english = 'arts_and_craftmanship';
+
+-- The 'unknown' bucket
 INSERT INTO clean.category_translation
     (product_category_name, product_category_name_english, display_name, is_manual_override)
 VALUES ('unknown', 'unknown', 'Unknown', 1);
@@ -521,7 +485,7 @@ DECLARE @cat_in  INT = (SELECT COUNT(*) FROM raw.category_translation);
 DECLARE @cat_out INT = (SELECT COUNT(*) FROM clean.category_translation);
 EXEC clean.usp_log_rule
     @rule_id          = 'CATEGORY_TRANSLATION',
-    @rule_description = 'Load 71 base + 2 manual overrides + 1 unknown + display_name column',
+    @rule_description = 'Load 71 base + 2 overrides + 1 unknown + 5 typo fixes + display_name',
     @table_name       = 'category_translation',
     @rows_in          = @cat_in,
     @rows_out         = @cat_out,
@@ -533,13 +497,12 @@ GO
 
 -- -------------------------------------------------------------------------------
 -- 4.2 clean.products
---     Fix "lenght" typo in column names. Resolve category. Flag missing dims.
 -- -------------------------------------------------------------------------------
 IF OBJECT_ID('clean.products', 'U') IS NOT NULL DROP TABLE clean.products;
 
 CREATE TABLE clean.products (
     product_id                  NVARCHAR(50)  NOT NULL PRIMARY KEY,
-    product_category_name       NVARCHAR(100) NOT NULL,   -- 'unknown' when missing in raw
+    product_category_name       NVARCHAR(100) NOT NULL,
     category_name_english       NVARCHAR(100) NOT NULL,
     category_display_name       NVARCHAR(100) NOT NULL,
     product_name_length         INT           NULL,
@@ -598,14 +561,12 @@ GO
 
 -- -------------------------------------------------------------------------------
 -- 4.3 clean.reviews
---     Deduplicate: partition by order_id, order by creation DESC, answer DESC, id
---     -> 98,673 rows
 -- -------------------------------------------------------------------------------
 IF OBJECT_ID('clean.reviews', 'U') IS NOT NULL DROP TABLE clean.reviews;
 
 CREATE TABLE clean.reviews (
-    order_id                 NVARCHAR(50)  NOT NULL PRIMARY KEY,   -- grain: one row per order
-    review_id                NVARCHAR(50)  NOT NULL,               -- not unique (source has dupes)
+    order_id                 NVARCHAR(50)  NOT NULL PRIMARY KEY,
+    review_id                NVARCHAR(50)  NOT NULL,
     review_score             INT           NOT NULL,
     review_comment_title     NVARCHAR(MAX) NULL,
     review_comment_message   NVARCHAR(MAX) NULL,
@@ -615,8 +576,8 @@ CREATE TABLE clean.reviews (
 
 ;WITH ranked AS (
     SELECT
-        review_id,
         order_id,
+        review_id,
         review_score,
         review_comment_title,
         review_comment_message,
@@ -646,9 +607,8 @@ SELECT
 FROM ranked
 WHERE rn = 1;
 
-DECLARE @rev_in       INT = (SELECT COUNT(*) FROM raw.reviews);
-DECLARE @rev_out      INT = (SELECT COUNT(*) FROM clean.reviews);
-DECLARE @rev_removed  INT = @rev_in - @rev_out;
+DECLARE @rev_in   INT = (SELECT COUNT(*) FROM raw.reviews);
+DECLARE @rev_out  INT = (SELECT COUNT(*) FROM clean.reviews);
 EXEC clean.usp_log_rule
     @rule_id          = 'REVIEWS_DEDUP',
     @rule_description = 'Dedup by order_id: latest creation, then answer, then review_id',
@@ -662,17 +622,35 @@ PRINT 'clean.reviews built.';
 GO
 
 -- -------------------------------------------------------------------------------
--- 4.4 Verify
+-- 5. Verify
 -- -------------------------------------------------------------------------------
-SELECT 'clean.category_translation' AS table_name, COUNT(*) AS rows FROM clean.category_translation
-UNION ALL SELECT 'clean.products',                COUNT(*) FROM clean.products
-UNION ALL SELECT 'clean.reviews',                 COUNT(*) FROM clean.reviews;
+SELECT 'clean.customers'   AS table_name, COUNT(*) AS rows FROM clean.customers
+UNION ALL SELECT 'clean.sellers',      COUNT(*) FROM clean.sellers
+UNION ALL SELECT 'clean.geolocation',  COUNT(*) FROM clean.geolocation
+UNION ALL SELECT 'clean.orders',       COUNT(*) FROM clean.orders
+UNION ALL SELECT 'clean.order_items',  COUNT(*) FROM clean.order_items
+UNION ALL SELECT 'clean.payments',     COUNT(*) FROM clean.payments
+UNION ALL SELECT 'clean.category_translation', COUNT(*) FROM clean.category_translation
+UNION ALL SELECT 'clean.products',     COUNT(*) FROM clean.products
+UNION ALL SELECT 'clean.reviews',      COUNT(*) FROM clean.reviews;
 GO
 
--- Flag counts
+-- Geolocation detail
 SELECT
-    (SELECT COUNT(*) FROM clean.products WHERE flag_missing_dimensions = 1) AS products_missing_dims,
-    (SELECT COUNT(*) FROM clean.reviews)                                    AS reviews_deduped;
+    COUNT(*) AS total_prefixes,
+    SUM(CAST(is_coordinates_missing AS INT)) AS prefixes_missing_coords,
+    SUM(filtered_count) AS coords_filtered
+FROM clean.geolocation;
+GO
+
+-- Category typo corrections (filter on ENGLISH name)
+SELECT product_category_name, product_category_name_english, display_name
+FROM clean.category_translation
+WHERE product_category_name_english IN (
+    'fashion_female_clothing','construction_tools_garden','construction_tools_tools',
+    'home_comfort','arts_and_craftsmanship'
+)
+ORDER BY product_category_name;
 GO
 
 -- Latest run's log

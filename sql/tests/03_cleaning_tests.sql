@@ -32,8 +32,8 @@ SELECT 'row_count.sellers', '3095', CAST(COUNT(*) AS NVARCHAR(50)),
 FROM clean.sellers;
 
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'row_count.geolocation', '19011', CAST(COUNT(*) AS NVARCHAR(50)),
-       CASE WHEN COUNT(*) = 19011 THEN 'PASS' ELSE 'FAIL' END
+SELECT 'row_count.geolocation', '19015', CAST(COUNT(*) AS NVARCHAR(50)),
+       CASE WHEN COUNT(*) = 19015 THEN 'PASS' ELSE 'FAIL' END
 FROM clean.geolocation;
 
 INSERT INTO @results (test_name, expected, actual, status)
@@ -100,7 +100,7 @@ SELECT 'sum.payment.raw_equals_clean',
     END;
 
 -- -------------------------------------------------------------------------------
--- 3. Zero unparseable values: no NULLs introduced by TRY_CONVERT where raw had values
+-- 3. Zero unparseable values
 -- -------------------------------------------------------------------------------
 INSERT INTO @results (test_name, expected, actual, status)
 SELECT 'unparseable.order_purchase_timestamp', '0',
@@ -126,7 +126,7 @@ FROM clean.reviews
 WHERE review_score IS NULL;
 
 -- -------------------------------------------------------------------------------
--- 4. Funnel: 99,441 -> 98,202 -> 97,905 from clean.orders using half-open interval
+-- 4. Funnel
 -- -------------------------------------------------------------------------------
 INSERT INTO @results (test_name, expected, actual, status)
 SELECT 'funnel.raw_total', '99441',
@@ -202,7 +202,7 @@ FROM clean.products
 WHERE flag_missing_dimensions = 1;
 
 -- -------------------------------------------------------------------------------
--- 7. Zip prefix length check (all should be 5)
+-- 7. Zip prefix length check
 -- -------------------------------------------------------------------------------
 INSERT INTO @results (test_name, expected, actual, status)
 SELECT 'zip.customers_len5', '99441',
@@ -219,14 +219,14 @@ FROM clean.sellers
 WHERE LEN(seller_zip_code_prefix) = 5;
 
 INSERT INTO @results (test_name, expected, actual, status)
-SELECT 'zip.geolocation_len5', '19011',
+SELECT 'zip.geolocation_len5', '19015',
     CAST(COUNT(*) AS NVARCHAR(50)),
-    CASE WHEN COUNT(*) = 19011 THEN 'PASS' ELSE 'FAIL' END
+    CASE WHEN COUNT(*) = 19015 THEN 'PASS' ELSE 'FAIL' END
 FROM clean.geolocation
 WHERE LEN(geolocation_zip_code_prefix) = 5;
 
 -- -------------------------------------------------------------------------------
--- 8. Foreign key: order_items.order_id in orders
+-- 8. Foreign keys
 -- -------------------------------------------------------------------------------
 INSERT INTO @results (test_name, expected, actual, status)
 SELECT 'fk.order_items.order_id_in_orders', '0',
@@ -257,6 +257,26 @@ FROM clean.order_items oi
 WHERE NOT EXISTS (SELECT 1 FROM clean.sellers s WHERE s.seller_id = oi.seller_id);
 
 -- -------------------------------------------------------------------------------
+-- 9. Geolocation identity test
+--     raw rows = kept rows + filtered rows in kept prefixes + rows in dropped prefixes
+--     With the new policy (no dropped prefixes), dropped = 0.
+-- -------------------------------------------------------------------------------
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'geolocation.identity_raw_equals_clean_and_filtered', '1000163',
+    CAST((SELECT SUM(sample_count + filtered_count) FROM clean.geolocation) AS NVARCHAR(50)),
+    CASE
+        WHEN (SELECT SUM(sample_count + filtered_count) FROM clean.geolocation) = 1000163
+        THEN 'PASS' ELSE 'FAIL'
+    END;
+
+INSERT INTO @results (test_name, expected, actual, status)
+SELECT 'geolocation.prefixes_missing_coords', '4',
+    CAST(COUNT(*) AS NVARCHAR(50)),
+    CASE WHEN COUNT(*) = 4 THEN 'PASS' ELSE 'FAIL' END
+FROM clean.geolocation
+WHERE is_coordinates_missing = 1;
+
+-- -------------------------------------------------------------------------------
 -- Report
 -- -------------------------------------------------------------------------------
 SELECT test_name, expected, actual, status
@@ -268,4 +288,8 @@ SELECT
     SUM(CASE WHEN status = 'FAIL' THEN 1 ELSE 0 END) AS failed,
     COUNT(*) AS total
 FROM @results;
+
+-- Fail loudly if any test failed
+IF EXISTS (SELECT 1 FROM @results WHERE status = 'FAIL')
+    THROW 51000, 'One or more cleaning tests failed. See results above.', 1;
 GO
