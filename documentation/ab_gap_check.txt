@@ -1,0 +1,77 @@
+A+B vs status-total gap diagnostic — 2026-10-04 05:56:51.958893
+========================================================================
+
+## THE THREE NUMBERS
+
+  A  = payments on no-item orders (any status):        BRL   162,591.95
+  B  = payments on out-of-scope statuses (has items):  BRL   108,058.22
+  A+B:                                                 BRL   270,650.17
+  Status-total = payments on canceled/unavail/created: BRL   270,423.21
+  Gap (A+B) - status-total:                            BRL       226.96
+
+## A DECOMPOSED BY STATUS
+
+Payments on no-item orders, grouped by the order's status:
+
+             orders   payments
+status                        
+unavailable     603  124339.02
+canceled        164   37337.87
+created           5     688.10
+invoiced          2     149.23
+shipped           1      77.73
+
+## A SPLIT BY WHETHER THE ORDER STATUS IS IN-SCOPE OR EXCLUDED
+
+  A with in-scope status:      BRL       226.96  (3 orders)
+  A with excluded status:      BRL   162,364.99  (772 orders)
+  A total:                     BRL   162,591.95
+
+## THE IDENTITY
+
+  status-total = A_excluded_status + B_orders_whose_status_is_excluded?
+  Wait — B is defined as orders with items AND out-of-scope status.
+  So B = payments on orders with items AND excluded status.
+  status-total = payments on orders with excluded status (regardless of items).
+
+  Therefore:  status-total = A_excluded_status + B
+
+  A_excluded_status:  BRL   162,364.99
+  B:                  BRL   108,058.22
+  Sum:                BRL   270,423.21
+  status-total:       BRL   270,423.21
+  Residual:           BRL        -0.00
+
+  And the 226.96 gap is exactly A_in_scope_status:
+    A with in-scope status: BRL       226.96
+
+  Check:
+    (A + B) - status-total = A_in_scope_status
+    (A_total + B_total) - status_total = 226.96
+    A_in_scope_total                    = 226.96
+    Difference:                         = 0.0
+
+## SAMPLE: IN-SCOPE-STATUS ORDERS THAT HAVE NO ITEM ROWS
+
+These are orders whose status looks fulfillable, but which have no rows
+in order_items. They are in population A but not in the status-total.
+
+                        order_id order_status order_purchase_timestamp
+a68ce1686d536ca72bd2dadc4b8671e5      shipped      2016-10-05 01:47:40
+2ce9683175cdab7d1c95bcbb3e36f478     invoiced      2016-10-05 21:03:33
+e04f1da1f48bf2bbffcf57b9824f76e1     invoiced      2016-10-05 13:22:20
+
+## SUMMARY
+
+  The 226.96 gap is A_in_scope_status: payments on orders that have
+  no item rows but whose status is in-scope (delivered, shipped,
+  invoiced, processing, approved).
+
+  These orders appear in A (no item rows) but not in the status-total
+  (which is restricted to canceled/unavailable/created).
+
+  Implication: these orders have a delivered/shipped status but no
+  item rows, which is unusual. They are outside the analytic population
+  (which requires item rows) and do not affect any metric.
+
+Diagnostic complete.
