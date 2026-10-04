@@ -1,0 +1,104 @@
+Null-count reconciliation — 2026-10-05 00:37:52.936389
+========================================================================
+
+## orders  (olist_orders_dataset.csv)
+
+  column                               csv_nulls  sql_nulls  match
+  ----------------------------------- ---------- ----------  -----
+  order_id                                     0          0  OK
+  customer_id                                  0          0  OK
+  order_status                                 0          0  OK
+  order_purchase_timestamp                     0          0  OK
+  order_approved_at                          160        160  OK
+  order_delivered_carrier_date              1783       1783  OK
+  order_delivered_customer_date             2965       2965  OK
+  order_estimated_delivery_date                0          0  OK
+
+## order_items  (olist_order_items_dataset.csv)
+
+  column                               csv_nulls  sql_nulls  match
+  ----------------------------------- ---------- ----------  -----
+  order_id                                     0          0  OK
+  order_item_id                                0          0  OK
+  product_id                                   0          0  OK
+  seller_id                                    0          0  OK
+  shipping_limit_date                          0          0  OK
+  price                                        0          0  OK
+  freight_value                                0          0  OK
+
+## payments  (olist_order_payments_dataset.csv)
+
+  column                               csv_nulls  sql_nulls  match
+  ----------------------------------- ---------- ----------  -----
+  order_id                                     0          0  OK
+  payment_sequential                           0          0  OK
+  payment_type                                 0          0  OK
+  payment_installments                         0          0  OK
+  payment_value                                0          0  OK
+
+## reviews  (olist_order_reviews_dataset.csv)
+
+  column                               csv_nulls  sql_nulls  match
+  ----------------------------------- ---------- ----------  -----
+  review_id                                    0          0  OK
+  order_id                                     0          0  OK
+  review_score                                 0          0  OK
+  review_comment_title                     87656      87656  OK
+  review_comment_message                   58247      58247  OK
+  review_creation_date                         0          0  OK
+  review_answer_timestamp                      0          0  OK
+
+## customers  (olist_customers_dataset.csv)
+
+  column                               csv_nulls  sql_nulls  match
+  ----------------------------------- ---------- ----------  -----
+  customer_id                                  0          0  OK
+  customer_unique_id                           0          0  OK
+  customer_zip_code_prefix                     0          0  OK
+  customer_city                                0          0  OK
+  customer_state                               0          0  OK
+
+## sellers  (olist_sellers_dataset.csv)
+
+  column                               csv_nulls  sql_nulls  match
+  ----------------------------------- ---------- ----------  -----
+  seller_id                                    0          0  OK
+  seller_zip_code_prefix                       0          0  OK
+  seller_city                                  0          0  OK
+  seller_state                                 0          0  OK
+
+## products  (olist_products_dataset.csv)
+
+  column                               csv_nulls  sql_nulls  match
+  ----------------------------------- ---------- ----------  -----
+  product_id                                   0          0  OK
+  product_category_name                      610        610  OK
+  product_name_lenght                        610        610  OK
+  product_description_lenght                 610        610  OK
+  product_photos_qty                         610        610  OK
+  product_weight_g                             2          2  OK
+  product_length_cm                            2          2  OK
+  product_height_cm                            2          2  OK
+  product_width_cm                             2          2  OK
+
+## geolocation  (olist_geolocation_dataset.csv)
+
+  column                               csv_nulls  sql_nulls  match
+  ----------------------------------- ---------- ----------  -----
+  geolocation_zip_code_prefix                  0          0  OK
+  geolocation_lat                              0          0  OK
+  geolocation_lng                              0          0  OK
+  geolocation_city                             0          0  OK
+  geolocation_state                            0          0  OK
+
+## category_translation  (product_category_name_translation.csv)
+
+  column                               csv_nulls  sql_nulls  match
+  ----------------------------------- ---------- ----------  -----
+  product_category_name                        0          0  OK
+  product_category_name_english                0          0  OK
+
+
+========================================================================
+TOTAL MISMATCHES: 0
+All columns match between source and loaded tables.

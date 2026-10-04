@@ -15,6 +15,8 @@
 | SQL Server version | Microsoft SQL Server 2025 (RTM-GDR) (KB5122770) — 17.0.1135.8 (X64), Express Edition (64-bit) |
 | Instance | `.\SQLEXPRESS` |
 | Database | `OlistAnalytics` |
+| Collation | `SQL_Latin1_General_CP1_CI_AS` (Windows-1252) |
+| Raw text column type | `NVARCHAR` (UTF-16) |
 | Schemas | `raw`, `clean`, `analytics` |
 | Source directory | `C:\data\olist\` |
 | Load script | `sql/02_load_raw.sql` |
@@ -38,23 +40,17 @@ This is verified in the script itself (`sql/02_load_raw.sql`) with inline commen
 
 ---
 
-## 3. Re-runnability — Two Consecutive Runs
+## 3. Re-runnability — Multiple Consecutive Runs
 
-The script was executed twice in succession with no changes between runs. Row counts from both runs, side by side:
+The script was executed three times in succession. The append-only `raw.load_log` table holds each run's row counts with a distinct `run_id`.
 
-| Table | Run 1 | Run 2 | Match |
-|-------|------:|------:|:-----:|
-| category_translation | 71 | 71 | ✅ |
-| customers | 99,441 | 99,441 | ✅ |
-| geolocation | 1,000,163 | 1,000,163 | ✅ |
-| order_items | 112,650 | 112,650 | ✅ |
-| orders | 99,441 | 99,441 | ✅ |
-| payments | 103,886 | 103,886 | ✅ |
-| products | 32,951 | 32,951 | ✅ |
-| reviews | 99,224 | 99,224 | ✅ |
-| sellers | 3,095 | 3,095 | ✅ |
+| run_id | Tables loaded | First load | Last load |
+|-------:|--------------:|------------|-----------|
+| 1 | 9 | 2026-10-04 19:20:40 | 2026-10-04 19:20:45 |
+| 2 | 9 | 2026-10-04 19:20:58 | 2026-10-04 19:21:03 |
+| 3 | 9 | 2026-10-04 19:21:27 | 2026-10-04 19:21:32 |
 
-Only the `load_timestamp` column changed between runs. Row counts are byte-identical. The `TRUNCATE TABLE` at the top of the script ensures a failed or partial load is fully discarded before the next attempt.
+Row counts across runs are byte-identical. The `TRUNCATE TABLE` at the top of the script ensures a failed or partial load is fully discarded before the next attempt. The `:on error exit` directive stops the script on any failure, and a final expected-count check raises an error if any table's loaded count differs from the pinned control totals.
 
 ---
 
@@ -64,15 +60,15 @@ Expected counts are sourced from `control_totals.json` -> `raw_level`.
 
 | Table | Expected | Loaded | Pass / Fail |
 |-------|---------:|-------:|:-----------:|
-| category_translation | 71 | 71 | ✅ PASS |
-| customers | 99,441 | 99,441 | ✅ PASS |
-| geolocation | 1,000,163 | 1,000,163 | ✅ PASS |
-| order_items | 112,650 | 112,650 | ✅ PASS |
-| orders | 99,441 | 99,441 | ✅ PASS |
-| payments | 103,886 | 103,886 | ✅ PASS |
-| products | 32,951 | 32,951 | ✅ PASS |
-| reviews | 99,224 | 99,224 | ✅ PASS |
-| sellers | 3,095 | 3,095 | ✅ PASS |
+| category_translation | 71 | 71 | PASS |
+| customers | 99,441 | 99,441 | PASS |
+| geolocation | 1,000,163 | 1,000,163 | PASS |
+| order_items | 112,650 | 112,650 | PASS |
+| orders | 99,441 | 99,441 | PASS |
+| payments | 103,886 | 103,886 | PASS |
+| products | 32,951 | 32,951 | PASS |
+| reviews | 99,224 | 99,224 | PASS |
+| sellers | 3,095 | 3,095 | PASS |
 
 **9 of 9 tables match.** No off-by-one, no truncation, no duplicated rows.
 
@@ -97,9 +93,9 @@ Query used (against `raw` schema, casting text to `DECIMAL(18,2)`):
 
 | Metric | Expected (`control_totals.json`) | Loaded | Pass / Fail |
 |--------|--------------------------------:|-------:|:-----------:|
-| `SUM(price)` | 13,591,643.70 | 13,591,643.70 | ✅ PASS |
-| `SUM(freight_value)` | 2,251,909.54 | 2,251,909.54 | ✅ PASS |
-| `SUM(payment_value)` | 16,008,872.12 | 16,008,872.12 | ✅ PASS |
+| `SUM(price)` | 13,591,643.70 | 13,591,643.70 | PASS |
+| `SUM(freight_value)` | 2,251,909.54 | 2,251,909.54 | PASS |
+| `SUM(payment_value)` | 16,008,872.12 | 16,008,872.12 | PASS |
 
 All three sums match **to the cent**. No decimal truncation, no comma-as-thousands-separator confusion, no locale issues.
 
@@ -109,11 +105,11 @@ All three sums match **to the cent**. No decimal truncation, no comma-as-thousan
 
 | Key | Expected (`raw_level`) | Loaded | Pass / Fail |
 |-----|----------------------:|-------:|:-----------:|
-| `orders.order_id` | 99,441 | 99,441 | ✅ PASS |
-| `customers.customer_unique_id` | 96,096 | 96,096 | ✅ PASS |
-| `sellers.seller_id` | 3,095 | 3,095 | ✅ PASS |
-| `products.product_id` | 32,951 | 32,951 | ✅ PASS |
-| `(order_id, order_item_id)` in `order_items` | 112,650 | 112,650 | ✅ PASS |
+| `orders.order_id` | 99,441 | 99,441 | PASS |
+| `customers.customer_unique_id` | 96,096 | 96,096 | PASS |
+| `sellers.seller_id` | 3,095 | 3,095 | PASS |
+| `products.product_id` | 32,951 | 32,951 | PASS |
+| `(order_id, order_item_id)` in `order_items` | 112,650 | 112,650 | PASS |
 
 Composite-key check in `order_items` uses:
 
@@ -127,38 +123,75 @@ The composite-key distinct count equals the row count, confirming no duplicate `
 
 ## 7. Encoding Verification
 
-The Olist CSVs are **mixed-encoding**. Byte-level inspection of the source files identifies which ones contain UTF-8 accented characters:
+The Olist CSVs are **mixed-encoding**. Byte-level inspection of the source files identifies which ones contain UTF-8 multi-byte sequences:
 
-| File | C3-xx byte count | Contains accents? |
-|------|----------------:|:-----------------:|
-| olist_orders_dataset.csv | 0 | No |
-| olist_order_items_dataset.csv | 0 | No |
-| olist_order_payments_dataset.csv | 0 | No |
-| olist_order_reviews_dataset.csv | 53,798 | **Yes** |
-| olist_customers_dataset.csv | 0 | No |
-| olist_sellers_dataset.csv | 2 | **Yes** (minor) |
-| olist_products_dataset.csv | 0 | No |
-| olist_geolocation_dataset.csv | 80,227 | **Yes** |
-| product_category_name_translation.csv | 0 | No |
+| File | C2-xx | C3-xx | E2-xx | F0-xx | Notes |
+|------|------:|------:|------:|------:|-------|
+| olist_orders_dataset.csv | 0 | 0 | 0 | 0 | ASCII only |
+| olist_order_items_dataset.csv | 0 | 0 | 0 | 0 | ASCII only |
+| olist_order_payments_dataset.csv | 0 | 0 | 0 | 0 | ASCII only |
+| olist_order_reviews_dataset.csv | 74 | 53,798 | 0 | **721** | Portuguese accents + emoji |
+| olist_customers_dataset.csv | 0 | 0 | 0 | 0 | ASCII only |
+| olist_sellers_dataset.csv | 2 | 0 | 0 | 0 | ASCII only |
+| olist_products_dataset.csv | 0 | 0 | 0 | 0 | ASCII only |
+| olist_geolocation_dataset.csv | 5 | 80,227 | 0 | 0 | Portuguese accents |
+| product_category_name_translation.csv | 0 | 0 | 0 | 0 | ASCII only |
 
-**Loaded samples confirm accents survived:**
+Lead byte meanings:
 
-Geolocation — accented city names are stored with diacritics intact:
+- **C2/C3** — 2-byte UTF-8 sequences: Latin accents (Portuguese, etc.)
+- **E2** — 3-byte sequences: curly quotes, em-dashes, ellipsis (none present in this dataset)
+- **F0** — 4-byte sequences: emoji (721 in the reviews file)
 
-- `abadiânia` (state GO)
-- `abaeté` (state MG)
+### Initial Load Failed Silently (Corrected in This Revision)
+
+The first load attempt used `VARCHAR` columns with `CODEPAGE = '65001'`, on the assumption that this preserves UTF-8 bytes. **It does not.** SQL Server converted incoming text to the column's code page (`SQL_Latin1_General_CP1_CI_AS`, which is Windows-1252), silently replacing any character that doesn't fit with `?`.
+
+Detected by comparing `?` counts between SQL and Python:
+
+| Metric | SQL (VARCHAR) | Python (source) | Delta |
+|--------|--------------:|----------------:|------:|
+| Reviews with `?` in message | 868 | 614 | +254 |
+| Reviews with `?` in title | 44 | 20 | +24 |
+
+**254 messages and 24 titles gained a `?` that is not in the source.** All 721 emoji (F0-xx sequences) plus any other out-of-code-page characters were silently converted.
+
+### Fix: NVARCHAR Columns
+
+The raw tables were recreated with `NVARCHAR` columns instead of `VARCHAR`. `NVARCHAR` stores UTF-16 and bypasses code-page conversion entirely — the same BULK INSERT options read UTF-8 source bytes and write correct UTF-16 text.
+
+After the fix, the `?` counts match the Python source exactly:
+
+| Metric | SQL (NVARCHAR) | Python (source) | Match |
+|--------|---------------:|----------------:|:-----:|
+| Reviews with `?` in message | 614 | 614 | yes |
+| Reviews with `?` in title | 20 | 20 | yes |
+
+### Accents and Emoji Confirmed Preserved
+
+Geolocation — accented city names stored with diacritics intact:
+
+- `abadiânia` (state GO), `abaeté` (state MG)
 - `águas da prata`, `águas de lindóia`
 - `altinópolis`, `alumínio`
 
-Reviews — Portuguese comment text preserves tildes and accents:
+Reviews — accented Portuguese text preserved:
 
 - "Não gostei! Comprei gato por lebre"
 - "O produto não chegou no prazo estipulado"
-- "Não funciona não faz sincronismo"
 
-**Why both `aguai` and `aguaí` appear in the same table:** The Olist maintainers de-accented some source files (customers, orders, products) but not others (geolocation, reviews, sellers). Both versions are legitimate rows from different files. This is a property of the source dataset, not a load error.
+Reviews — emoji preserved (byte lengths confirm multi-byte storage):
 
-The `VARCHAR` + `CODEPAGE = '65001'` combination preserves the raw UTF-8 bytes exactly, which is the correct behavior for a staging layer. Type promotion to `NVARCHAR` happens in the cleaning layer (Step 4) if needed.
+- Longest reviews now exceed 400 bytes (they were capped around 200 with `VARCHAR`)
+
+### Why `aguai` and `aguaí` Appear Together
+
+The geolocation file was not de-accented by the Olist maintainers, so it contains city names in their full accented form (`aguaí`, `águas da prata`). The customers and sellers files **were** de-accented, so their city fields appear as `aguai`, `aguas da prata` — ASCII versions of the same names.
+
+This means:
+
+- **Do not join on city names** — the same city appears under two spellings across files.
+- The geography dimension should be built from **customer and seller city fields** (matching the source), and use geolocation only for coordinates keyed by zip prefix.
 
 ---
 
@@ -185,15 +218,15 @@ The order without a payment row is present in the load, retains its status, and 
 
 | Check | Result |
 |-------|:------:|
-| SQL Server version supports CSV format | ✅ 17.0 (2025 Express) |
-| Database and 3 schemas created | ✅ |
-| 9 raw tables created and loaded | ✅ |
-| Two consecutive runs produce identical counts | ✅ |
-| All 9 row counts match `control_totals.json` | ✅ |
-| All 3 sums match to the cent | ✅ |
-| All 5 distinct-key counts match | ✅ |
-| Accents survive the load | ✅ (reviews + geolocation + sellers) |
-| Missing-payment order present with NULL payment | ✅ |
+| SQL Server version supports CSV format | 17.0 (2025 Express) |
+| Database and 3 schemas created | PASS |
+| 9 raw tables created and loaded | PASS |
+| Multiple consecutive runs produce identical counts | PASS |
+| All 9 row counts match `control_totals.json` | PASS |
+| All 3 sums match to the cent | PASS |
+| All 5 distinct-key counts match | PASS |
+| Encoding preserved (NVARCHAR, verified against Python) | PASS |
+| Missing-payment order present with NULL payment | PASS |
 
 **Step 3 is complete.** The raw layer is a faithful, re-runnable copy of the source CSVs. Every downstream layer (cleaning, analytics) can be tested against the values pinned in `control_totals.json`.
 
@@ -204,10 +237,11 @@ The order without a payment row is present in the load, retains its status, and 
 To reproduce from a clean environment:
 
 1. Place the 9 Olist CSVs in `C:\data\olist\`.
-2. Open `sql/01_raw_tables.sql` in SSMS and execute — creates database, schemas, and 9 empty raw tables.
-3. Open `sql/02_load_raw.sql` in SSMS and execute — truncates, loads, logs row counts.
-4. Re-execute `sql/02_load_raw.sql` to confirm re-runnability.
-5. Compare the `raw.load_log` table against `control_totals.json`.
+2. Open `sql/01_raw_tables.sql` in SSMS and execute — creates database, schemas, and 9 empty raw tables with NVARCHAR columns.
+3. Enable SQLCMD mode (Query -> SQLCMD Mode).
+4. Open `sql/02_load_raw.sql` in SSMS and execute — truncates, loads, logs row counts, and asserts against expected values.
+5. Re-execute `sql/02_load_raw.sql` to confirm re-runnability. Each run appends to `raw.load_log` with a new `run_id`.
+6. Compare the current `run_id`'s counts against `control_totals.json`.
 
 Expected: all 9 counts, all 3 sums, and all 5 distinct-key counts match exactly.
 

@@ -492,6 +492,7 @@ These are excluded from the late-rate denominator but kept in Order Count.
 | **Late rate** | **6.79%** |
 
 Pinned in `control_totals.json`.
+**Selection effect in review data:** The late-rate denominator (delivered, in-window, non-null delivery date) is 96,203 orders. Of these, 6,378 late orders and 89,182 on-time orders have a review — leaving 153 late and 490 on-time orders without one. That means **2.3% of late orders have no review against 0.5% of on-time orders**. Late orders are under-reviewed relative to on-time orders, which may slightly bias the average-score comparison. This effect should be noted when interpreting the late-vs-on-time review gap in Step 8.
 
 ### 12.5 Late vs on-time review scores
 
