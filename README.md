@@ -43,17 +43,27 @@ performance — turning raw transactional data into actionable insights.
 ## Repository Structure
 Ecommerce-Analytics/
 ├── data/
-│ ├── raw/ # Kaggle CSVs (git-ignored)
-│ └── cleaned/ # Intermediate cleaned exports (git-ignored)
-├── python/ # Profiling and analysis scripts
+│   ├── raw/               # Kaggle CSVs (git-ignored)
+│   └── cleaned/           # Intermediate cleaned exports (git-ignored)
+├── python/                # Reproducible profiling and analysis scripts
+│   ├── profile_data.py
+│   ├── gap_analysis.py
+│   ├── repeat_and_reconcile.py
+│   ├── diagnose_reconciliation.py
+│   ├── reconcile_payments_v2.py
+│   ├── order_funnel.py
+│   ├── late_flag_check.py
+│   ├── control_totals.py
+│   └── verify_control_totals.py
 ├── sql/
-│ ├── 01_raw_tables.sql
-│ ├── 02_cleaning.sql
-│ └── 03_analytics_layer.sql
-├── powerbi/ # .pbix report file (git-ignored, screenshots provided)
-├── dax/ # DAX measure documentation
-├── documentation/ # Business questions, data dictionary, ER diagram
-├── screenshots/ # Report page images
+│   ├── 01_raw_tables.sql
+│   ├── 02_cleaning.sql
+│   └── 03_analytics_layer.sql
+├── powerbi/               # .pbix report file (git-ignored, screenshots provided)
+├── dax/                   # DAX measure documentation
+├── documentation/         # Data quality log, metric definitions, decision log,
+│                          # control totals, and script outputs (evidence trail)
+├── screenshots/           # Report page images
 └── README.md
 
 text

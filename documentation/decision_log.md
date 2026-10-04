@@ -1,12 +1,19 @@
 # Decision Log — Olist Analytics
 
-**Purpose:** A running log of every non-obvious modeling, metric, or cleaning
-decision made during this project. Each entry includes what was decided,
-why, and what alternative was rejected. Interviewers ask "why did you do it
-this way?" — this file is the answer.
+**Analyst:** Fazle Karim
+**Date:** October 2026
+**Version:** 1.2
+**Purpose:** A running log of every non-obvious modeling, metric, or
+cleaning decision made during this project. Each entry includes what was
+decided, why, and what alternative was rejected. Interviewers ask "why did
+you do it this way?" — this file is the answer.
 
 Entries are added in chronological order. Once a decision is logged it is
 considered frozen unless a later entry supersedes it.
+
+> **Rule:** every number referenced below is pinned in
+> `documentation/control_totals.json` and verified by
+> `python/verify_control_totals.py`.
 
 > **Markdown note:** Currency values are written as `BRL` or wrapped in
 > backticks to prevent GitHub from rendering `$` as math.
@@ -35,14 +42,15 @@ one-time-buyer rate and made the retention analysis meaningless.
 `processing`, `approved` order statuses. Excludes `canceled` (625),
 `unavailable` (609), and `created` (5).
 
-**Why:** Verified that all three excluded statuses were charged and
-refunded — they did not complete as a sale. `created` is a transient state
-that never progressed to payment.
+**Why:** Every order with an excluded status has a payment record. The
+dataset contains **no refund data** — whether the money was returned is
+unknown. The order status indicates the order did not complete as a sale.
+`created` is not a transient state with no payment: all 5 created orders
+have a payment row.
 
-**Effect:** Effective in-scope universe is 98,202 orders before the time
-window filter.
+**Effect:** In-scope universe is 98,202 orders before the time-window filter.
 
-**Evidence:** `data_quality_log.md` §6 (refund verification table).
+**Evidence:** `data_quality_log.md` §6 (payment record check).
 
 ---
 
@@ -55,33 +63,42 @@ window filter.
 Freight is a component of what the customer paid but is not called
 "revenue" — the dataset contains no cost data to determine margin.
 
-**Reconciliation:** On the analytic population (97,905 orders),
-`SUM(payment_value)` matches `SUM(price + freight_value)` to within
-`BRL 2,762.33` net (0.0176%) and `BRL 3,033.13` absolute (0.0193%). The
-residual concentrates in credit_card orders with installments > 1, and is
-consistent with installment interest charged to the customer but not paid
-to the seller. Boleto (single-installment) matches essentially exactly.
+**Pinned values on the analytic population:**
+- GMV: `BRL 13,449,529.68`
+- Freight Charged: `BRL 2,234,177.06`
+- Total Customer Paid: `BRL 15,683,706.74`
+
+**Reconciliation:** `SUM(payment_value)` on the analytic population matches
+`Total Customer Paid` to within `BRL 2,762.33` net (0.0176%) and
+`BRL 3,033.13` absolute (0.0193%). The residual concentrates in
+credit_card orders with installments > 1, consistent with installment
+interest charged to the customer.
 
 **Evidence:** `data_quality_log.md` §11; `documentation/reconcile_payments_v2.txt`.
 
-**Superseded:** An earlier version of this decision cited `BRL 2,838.38`
-(0.018%) — that figure was incorrect (see D-010). Corrected here.
-
 ---
 
-### D-004: Trend window is 2017-01 to 2018-08
+### D-004: Trend window is 2017-01-01 to 2018-08-31
 
-**Decision:** All trend analysis uses `order_purchase_timestamp` between
-`2017-01-01` and `2018-08-31`.
+**Decision:** All trend analysis uses `order_purchase_timestamp` with a
+**half-open interval**: `>= '2017-01-01' AND < '2018-09-01'`.
 
 **Why:** 2016 has only 329 orders (ramp-up) and is not representative.
 2018-09 and 2018-10 have 20 orders combined (incomplete tail); after the
 in-scope filter, only 1 order remains in that tail.
 
-**YoY window:** 2017-01..08 vs 2018-01..08 — the only like-for-like
-comparison available.
+**Boundary convention:** Half-open intervals (`>= start AND < end`). Using
+`BETWEEN '2017-01-01' AND '2018-08-31'` on a timestamp column excludes
+every order placed after midnight on 31 August. The half-open form
+prevents that class of bug.
 
-**Evidence:** `data_quality_log.md` §7.
+**YoY window:** `>= '2017-01-01' AND < '2017-09-01'` vs
+`>= '2018-01-01' AND < '2018-09-01'` — the only like-for-like comparison.
+
+**Pinned year splits:** 2017-01..12 in-scope = 44,375 orders; 2018-01..08
+in-scope = 53,530; all statuses in-window = 99,092.
+
+**Evidence:** `data_quality_log.md` §7; `control_totals.json` year_splits.
 
 ---
 
@@ -138,9 +155,9 @@ labels by construction. Products with no category are labeled `unknown`
 - `pc_gamer` → `pc_gamer`
 - `portateis_cozinha_e_preparadores_de_alimentos` → `kitchen_food_prep_portables`
 
-**Display-name override:** Simple Title Case turns `pc_gamer` into `Pc Gamer`.
-A single override entry forces `PC Gamer` in the display column. All other
-categories use the plain Title Case rule.
+**Display-name override:** Simple Title Case turns `pc_gamer` into
+`Pc Gamer`. A single override forces `PC Gamer` in the display column.
+All other categories use plain Title Case.
 
 **Evidence:** `data_quality_log.md` §8.
 
@@ -165,9 +182,9 @@ growth.
 
 **Decision:** The original payments-vs-items reconciliation reported a
 misleading headline figure because the two totals were computed on two
-different order populations. The correct population is defined once as a
-single list of order_ids (in-scope, in-window, has-item-rows), and both
-sums are computed by joining to that list.
+different order populations. The rebuilt script defines the population
+once as a single list of order_ids (in-scope, in-window, has-item-rows),
+and computes both sums by joining to that list.
 
 **Why it mattered:** The original LEFT total restricted items to in-scope
 statuses; the RIGHT total joined payments to that population via an
@@ -181,11 +198,12 @@ population is `BRL 2,762.33` (0.0176%).
 the two sides cover different numbers of orders. This class of bug now
 fails loudly.
 
-**Note on my first diagnosis:** I initially attributed the discrepancy to
-"netting" of positive and negative residuals. That was wrong — summation
-is linear, so `SUM(A − B) = SUM(A) − SUM(B)` on the same population. The
-supervisor caught this; the diagnosis script
-(`python/diagnose_reconciliation.py`) confirmed the correct cause.
+**Note on the first diagnosis:** The initial diagnosis attributed the
+discrepancy to "netting" of positive and negative residuals. That was
+mathematically wrong — summation is linear, so
+`SUM(A − B) = SUM(A) − SUM(B)` on the same population. A review caught
+this. The diagnosis script (`python/diagnose_reconciliation.py`) confirms
+the correct cause.
 
 **Evidence:** `data_quality_log.md` §11; `documentation/reconcile_payments_v2.txt`;
 `documentation/diagnose_reconciliation.txt`.
@@ -194,20 +212,19 @@ supervisor caught this; the diagnosis script
 
 ### D-011: Analytic population = 97,905 orders
 
-**Decision:** The analytic population for all metrics is defined as a
-3-step funnel:
+**Decision:** The analytic population for all revenue, product, seller, and
+delivery metrics is defined as a three-step funnel:
 
-1. Status in-scope (excludes canceled, unavailable, created) → 98,202
-2. `order_purchase_timestamp` in [2017-01-01, 2018-09-01) → 97,905
+1. Status in-scope → 98,202
+2. `order_purchase_timestamp` in `[2017-01-01, 2018-09-01)` → 97,905
 3. Has at least one row in `order_items` → 97,905
 
 **Why:** Every metric must operate on a single, well-defined population.
 The funnel is reproducible (`python/order_funnel.py`) and independently
 verified step by step.
 
-**Surprise finding:** No in-scope, in-window order lacks item rows. The
-775 raw orders with no items are all out-of-scope status or outside the
-window.
+**Surprise:** No in-scope, in-window order lacks item rows. The 775 raw
+orders with no items are all out-of-scope status or outside the window.
 
 **Evidence:** `data_quality_log.md` §2; `documentation/order_funnel.txt`.
 
@@ -215,16 +232,14 @@ window.
 
 ### D-012: Late flag compares dates, not timestamps
 
-**Decision:** An order is "late" if `DATE(order_delivered_customer_date) >
-DATE(order_estimated_delivery_date)`. Both sides are normalized to midnight
-before comparison.
+**Decision:** An order is late if
+`DATE(order_delivered_customer_date) > DATE(order_estimated_delivery_date)`.
+Both sides normalized to midnight before comparison.
 
-**Why:** `order_estimated_delivery_date` is always at midnight (verified: 0
-of 99,441 rows have a non-midnight time). Comparing a raw delivery
-timestamp against a midnight estimated date misclassifies 1,292 orders as
-late — they were delivered on the estimated day but after midnight.
-Date-only comparison gives 6,534 late orders; raw timestamp comparison
-gives 7,826.
+**Why:** `order_estimated_delivery_date` is always at midnight (0 of
+99,441 rows have a non-midnight time). A raw delivery timestamp compared
+against a midnight estimated date misclassifies 1,292 orders — they were
+delivered on the estimated day but after midnight.
 
 **Additional rule:** Delivered orders with a null delivery date (8 orders,
 0.0083%) are excluded from the late-rate denominator but retained in
@@ -236,19 +251,19 @@ Order Count.
 
 ---
 
-### D-013: Verify refund hypothesis for excluded statuses
+### D-013: Verify payment record for excluded statuses
 
 **Decision:** Before excluding canceled, unavailable, and created orders
-from GMV, verify that they were charged and refunded (not just missing).
+from GMV, verify they were charged.
 
 **Why:** The exclusion rule needs a factual basis, not an assumption. If
 these orders lacked payments entirely, they'd represent a different kind
 of data-quality issue.
 
-**Result:** All 1,239 excluded-status orders have a payment row.
-Total charged: `BRL 270,423.21`. This confirms they did not complete as a
-sale — the customer was charged and the money returned. The exclusion from
-GMV is now evidence-based.
+**Result:** All 1,239 excluded-status orders have a payment row. Total
+`BRL 270,423.21`. **The dataset contains no refund data** — whether the
+money was returned is not recorded. The order status indicates the order
+did not complete.
 
 **Additional edge case:** 6 canceled orders have a delivery date. These
 remain excluded along with all other canceled orders.
@@ -257,6 +272,75 @@ remain excluded along with all other canceled orders.
 
 ---
 
+### D-014: Repeat-rate population = full customer base (all statuses)
+
+**Decision:** The reported repeat purchase rate is **3.12%** (2,997
+repeaters of 96,096 customers), computed over the full customer base — all
+dates, all statuses.
+
+**Why:** Repeat purchase rate is a customer-base property, not a periodic
+metric. A customer whose only orders were canceled, unavailable, or created
+still belongs to the base. Excluding such customers would drop the
+denominator to 94,986 and change the rate to 3.04%. Both figures are
+available, but the reported one uses the full base.
+
+**Alternative rejected:** Using the in-scope-status filter. It would
+understate the customer base by 1,110 customers and produce a number that
+does not describe the base as a whole.
+
+**Both values pinned in `control_totals.json`** under
+`customers.repeat_rate_all_statuses_pct` and
+`customers.repeat_rate_in_scope_pct`.
+
+**Evidence:** `data_quality_log.md` §3; `python/control_totals.py`.
+
+---
+
+### D-015: Round to cents before comparing in reconciliation
+
+**Decision:** In the payments reconciliation and the diagnosis, both sides
+are rounded to 2 decimal places before computing differences.
+
+**Why:** The dataset shows floating-point noise (values like
+`-1.705303e-13`), which would otherwise be counted as a residual. Rounding
+to cents removes the noise and produces an honest distribution.
+
+**Effect:** `orders_exact_match` changed from 97,534 (raw) to 97,336
+(cents-rounded). The net and absolute residuals are unchanged
+(`BRL 2,762.33` and `BRL 3,033.13`).
+
+**Evidence:** `data_quality_log.md` §11.3; `control_totals.json`.
+
+---
+
+### D-016: Date windows use half-open intervals
+
+**Decision:** Every date window in SQL, DAX, and Python uses a half-open
+interval: `>= start AND < end`, never `BETWEEN start AND end`.
+
+**Why:** On a timestamp column, `BETWEEN '2017-01-01' AND '2018-08-31'`
+excludes every row placed after midnight on 31 August. The half-open form
+`>= '2017-01-01' AND < '2018-09-01'` includes the entire end date and
+prevents off-by-one-day bugs.
+
+**Where it applies:** Time filter (metric_definitions §2), YoY window
+(§5.2), MoM, rolling 12-month, and any ad-hoc date window in SQL or DAX.
+
+**Evidence:** `data_quality_log.md` §2, §7; `metric_definitions.md` §2, §5.2.
+
+---
+
 ## How to Add an Entry
 
 Use this template when adding a new decision:
+D-NNN: Short title
+Decision: What was decided.
+
+Why: The reasoning, including the alternative rejected.
+
+Evidence: Where the supporting numbers live (file and section).
+
+text
+
+Number sequentially. Do not delete or edit prior entries — if a decision is
+later reversed, add a new entry that supersedes it and reference the old one.

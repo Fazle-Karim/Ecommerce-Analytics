@@ -1,0 +1,38 @@
+Control totals verification — 2026-10-04 05:39:56.247868
+Baseline file: documentation\control_totals.json
+========================================================================
+✅  dataset.raw_orders                                      expected=          99441  actual=          99441
+✅  dataset.raw_customers                                   expected=          99441  actual=          99441
+✅  dataset.raw_items_rows                                  expected=         112650  actual=         112650
+✅  dataset.raw_payments_rows                               expected=         103886  actual=         103886
+✅  funnel.in_scope_status                                  expected=          98202  actual=          98202
+✅  funnel.in_scope_and_in_window                           expected=          97905  actual=          97905
+✅  funnel.analytic_population                              expected=          97905  actual=          97905
+✅  revenue_on_population.gmv_item_price_only               expected=    13449529.68  actual=    13449529.68
+✅  revenue_on_population.freight_charged                   expected=     2234177.06  actual=     2234177.06
+✅  payments_reconciliation.payments_total                  expected=    15686469.07  actual=    15686469.07
+✅  payments_reconciliation.items_total                     expected=    15683706.74  actual=    15683706.74
+✅  payments_reconciliation.net_residual                    expected=        2762.33  actual=        2762.33
+✅  payments_reconciliation.absolute_residual               expected=        3033.13  actual=        3033.13
+✅  payments_reconciliation.orders_exact_match              expected=          97336  actual=          97336
+✅  payments_reconciliation.orders_compared                 expected=          97905  actual=          97905
+✅  customers.unique_customers_all_statuses                 expected=          96096  actual=          96096
+✅  customers.repeat_customers_all_statuses                 expected=           2997  actual=           2997
+✅  customers.repeat_rate_all_statuses_pct                  expected=           3.12  actual=           3.12
+✅  customers.unique_customers_in_scope                     expected=          94986  actual=          94986
+✅  customers.repeat_customers_in_scope                     expected=           2887  actual=           2887
+✅  customers.repeat_rate_in_scope_pct                      expected=           3.04  actual=           3.04
+✅  late_rate.denominator                                   expected=          96203  actual=          96203
+✅  late_rate.late_orders                                   expected=           6531  actual=           6531
+✅  late_rate.late_rate_pct                                 expected=           6.79  actual=           6.79
+✅  excluded_statuses.payments_total                        expected=      270423.21  actual=      270423.21
+✅  year_splits.in_window_orders_2017                       expected=          44375  actual=          44375
+✅  year_splits.in_window_orders_2018                       expected=          53530  actual=          53530
+✅  year_splits.in_window_orders_2017_2018_all_statuses     expected=          99092  actual=          99092
+
+========================================================================
+Total checks:   28
+Passed:         28
+Failed:         0
+
+✅ All checks passed. control_totals.json is verified.
