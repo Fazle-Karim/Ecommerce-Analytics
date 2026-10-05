@@ -100,7 +100,39 @@ for month, vals in mw.items():
     key = month.replace("-", "_")
     add(f"monthly.{key}.in_scope",  vals["orders_in_scope"])
     add(f"monthly.{key}.all_statuses", vals["orders_all_statuses"])
+# Delivery metrics
+d = baseline.get("delivery", {})
+if d:
+    add("delivery.avg_delivery_days",        f"{d['avg_delivery_days']:.4f}")
+    add("delivery.measurable_orders",        d["delivery_measurable_orders"])
+# Fact order items row count (computed in pandas from the analytic population)
+# Computed independently: items whose order is in the analytic population
+import pandas as _pd
+_orders = _pd.read_csv("data/raw/olist_orders_dataset.csv", dtype=str, encoding="utf-8")
+_orders["purchase_dt"] = _pd.to_datetime(_orders["order_purchase_timestamp"], errors="coerce")
+_items  = _pd.read_csv("data/raw/olist_order_items_dataset.csv", dtype=str, encoding="utf-8")
+_in_scope = {"delivered","shipped","invoiced","processing","approved"}
+_pop_ids = set(
+    _orders[
+        _orders["order_status"].isin(_in_scope) &
+        (_orders["purchase_dt"] >= _pd.Timestamp("2017-01-01")) &
+        (_orders["purchase_dt"] <  _pd.Timestamp("2018-09-01"))
+    ]["order_id"]
+)
+_fi_rows = int(_items[_items["order_id"].isin(_pop_ids)].shape[0])
+add("analytic.fact_order_items_rows", _fi_rows)
 
+# Exclusion reason breakdown
+_excluded_statuses = {"canceled","unavailable","created"}
+_n_out_of_scope = int((_orders["order_status"].isin(_excluded_statuses)).sum())
+_n_out_of_window = int(
+    (_orders["order_status"].isin(_in_scope) &
+     ((_orders["purchase_dt"] < _pd.Timestamp("2017-01-01")) |
+      (_orders["purchase_dt"] >= _pd.Timestamp("2018-09-01")))).sum()
+)
+add("excluded.out_of_scope_status", _n_out_of_scope)
+add("excluded.out_of_window",      _n_out_of_window)
+add("excluded.unclassified",       0)
 # ---------- Emit ----------
 lines = []
 lines.append("-- ===============================================================================")

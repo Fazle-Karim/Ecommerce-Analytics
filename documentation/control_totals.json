@@ -227,5 +227,9 @@
       "category_name_en": "garden_tools",
       "gmv": 479650.06
     }
-  ]
+  ],
+  "delivery": {
+    "avg_delivery_days": 12.0739,
+    "delivery_measurable_orders": 96203
+  }
 }

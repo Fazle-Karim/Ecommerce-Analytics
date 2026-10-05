@@ -5,10 +5,16 @@
 --          Non-population orders are preserved in analytics.excluded_orders.
 -- Run order: after 04_dimensions.sql.
 --
--- IMPORTANT: fact_order_items carries is_late, review_score, order_status as
--- attributes for convenience. These MUST be aggregated at order grain:
---   DISTINCTCOUNT(order_id) or AVERAGEX(VALUES(order_id), ...)
---   NEVER with a plain AVG() — multi-item orders would be over-weighted.
+-- is_late: BIT NULL. Values:
+--   1    = late (delivered, non-null delivery date, delivered_date > estimated_date)
+--   0    = on time (delivered, non-null delivery date, delivered_date <= estimated_date)
+--   NULL = not measurable (status != delivered, or no delivery date)
+--   AVG(is_late) is therefore correct without extra filtering.
+--
+-- delivery_days: floored whole days between purchase and delivery.
+--   Equivalent to pandas (delivered - purchase).dt.days.
+--   NULL if not delivered or if the delta is negative.
+--   Computed as DATEDIFF(SECOND, ...) / 86400 (integer division floors).
 -- ===============================================================================
 
 :on error exit
@@ -16,9 +22,6 @@
 USE OlistAnalytics;
 GO
 
--- -------------------------------------------------------------------------------
--- 1. Ensure build log exists (idempotent — created by 04_dimensions.sql)
--- -------------------------------------------------------------------------------
 IF OBJECT_ID('analytics.build_log', 'U') IS NULL
 BEGIN
     RAISERROR('analytics.build_log missing — run 04_dimensions.sql first.', 16, 1);
@@ -88,9 +91,9 @@ IF OBJECT_ID('analytics.fact_orders', 'U') IS NOT NULL DROP TABLE analytics.fact
 
 CREATE TABLE analytics.fact_orders (
     order_key                      INT IDENTITY(1,1) PRIMARY KEY,
-    order_id                       NVARCHAR(50)   NOT NULL,   -- natural key
-    customer_key                   INT            NOT NULL,   -- FK -> dim_customer
-    date_key                       INT            NOT NULL,   -- FK -> dim_date (purchase date)
+    order_id                       NVARCHAR(50)   NOT NULL,
+    customer_key                   INT            NOT NULL,
+    date_key                       INT            NOT NULL,
     customer_id                    NVARCHAR(50)   NOT NULL,
     customer_unique_id             NVARCHAR(50)   NOT NULL,
     order_status                   NVARCHAR(50)   NOT NULL,
@@ -100,7 +103,7 @@ CREATE TABLE analytics.fact_orders (
     order_delivered_customer_date  DATETIME2      NULL,
     order_estimated_delivery_date  DATETIME2      NULL,
     delivery_days                  INT            NULL,
-    is_late                        BIT            NOT NULL DEFAULT 0,
+    is_late                        BIT            NULL,
     review_score                   INT            NULL,
     payment_total                  DECIMAL(18,2)  NULL,
     item_count                     INT            NOT NULL DEFAULT 0,
@@ -163,15 +166,20 @@ SELECT
     cr.order_estimated_delivery_date,
     CASE
         WHEN cr.order_delivered_customer_date IS NOT NULL
-        THEN DATEDIFF(DAY, cr.order_purchase_timestamp, cr.order_delivered_customer_date)
+         AND cr.order_delivered_customer_date >= cr.order_purchase_timestamp
+        THEN DATEDIFF(SECOND, cr.order_purchase_timestamp,
+                             cr.order_delivered_customer_date) / 86400
         ELSE NULL
     END AS delivery_days,
     CASE
         WHEN cr.order_status = 'delivered'
          AND cr.order_delivered_customer_date IS NOT NULL
-         AND CAST(cr.order_delivered_customer_date AS DATE) >
-             CAST(cr.order_estimated_delivery_date AS DATE)
-        THEN 1 ELSE 0
+        THEN CASE
+            WHEN CAST(cr.order_delivered_customer_date AS DATE) >
+                 CAST(cr.order_estimated_delivery_date AS DATE) THEN 1
+            ELSE 0
+        END
+        ELSE NULL
     END AS is_late,
     r.review_score,
     p.payment_total,
@@ -185,7 +193,7 @@ LEFT JOIN items_agg i      ON i.order_id = cr.order_id;
 DECLARE @fo_count INT = (SELECT COUNT(*) FROM analytics.fact_orders);
 EXEC analytics.usp_log_build
     @step_id          = 'FACT_ORDERS_BUILD',
-    @step_description = 'One row per analytic order; delivery days, is_late, review, payment aggregated',
+    @step_description = 'One row per analytic order; delivery days, is_late NULL semantics, review, payment aggregated',
     @object_name      = 'analytics.fact_orders',
     @rows_written     = @fo_count;
 GO
@@ -197,25 +205,38 @@ GO
 -- SECTION 3: fact_order_items
 -- ===============================================================================
 
+-- ===============================================================================
+-- FACT_ORDER_ITEMS
+-- Grain: one row per order item.
+--
+-- order_key is for COUNTING DISTINCT ORDERS from this table ONLY.
+-- Do NOT create a relationship between fact_orders and fact_order_items
+-- in Power BI. Both facts connect directly to shared dimensions.
+--
+-- The is_late, review_score, and order_status attributes are copied from
+-- order grain. They MUST be aggregated at order grain when used as measures
+-- (DISTINCTCOUNT(order_id) or AVERAGEX(VALUES(order_id), ...)). A plain
+-- AVG() over item rows would overweight multi-item orders.
+-- ===============================================================================
+
 IF OBJECT_ID('analytics.fact_order_items', 'U') IS NOT NULL DROP TABLE analytics.fact_order_items;
 
 CREATE TABLE analytics.fact_order_items (
     order_item_key             INT IDENTITY(1,1) PRIMARY KEY,
     order_id                   NVARCHAR(50)   NOT NULL,
     order_item_id              INT            NOT NULL,
-    order_key                  INT            NOT NULL,   -- FK -> fact_orders
-    product_key                INT            NOT NULL,   -- FK -> dim_product
-    seller_key                 INT            NOT NULL,   -- FK -> dim_seller
-    customer_key               INT            NOT NULL,   -- FK -> dim_customer
-    date_key                   INT            NOT NULL,   -- FK -> dim_date
+    order_key                  INT            NOT NULL,
+    product_key                INT            NOT NULL,
+    seller_key                 INT            NOT NULL,
+    customer_key               INT            NOT NULL,
+    date_key                   INT            NOT NULL,
     product_id                 NVARCHAR(50)   NOT NULL,
     seller_id                  NVARCHAR(50)   NOT NULL,
     shipping_limit_date        DATETIME2      NULL,
     price                      DECIMAL(18,2)  NULL,
     freight_value              DECIMAL(18,2)  NULL,
     flag_shipping_limit_anomaly BIT           NOT NULL DEFAULT 0,
-    -- Attributes copied from order grain. Aggregate at order grain only.
-    is_late                    BIT            NOT NULL DEFAULT 0,
+    is_late                    BIT            NULL,
     review_score               INT            NULL,
     order_status               NVARCHAR(50)   NOT NULL
 );
@@ -268,37 +289,40 @@ UNION ALL SELECT 'analytics.fact_orders',       COUNT(*) FROM analytics.fact_ord
 UNION ALL SELECT 'analytics.fact_order_items',  COUNT(*) FROM analytics.fact_order_items;
 GO
 
--- identity: fact_orders + excluded_orders = 99,441
 SELECT
     (SELECT COUNT(*) FROM analytics.fact_orders)      AS fact_orders,
     (SELECT COUNT(*) FROM analytics.excluded_orders)  AS excluded_orders,
     (SELECT COUNT(*) FROM analytics.fact_orders)
-      + (SELECT COUNT(*) FROM analytics.excluded_orders) AS total
-;
+      + (SELECT COUNT(*) FROM analytics.excluded_orders) AS total;
 GO
 
--- exclusion reason breakdown
 SELECT exclusion_reason, COUNT(*) AS n
 FROM analytics.excluded_orders
 GROUP BY exclusion_reason
 ORDER BY exclusion_reason;
 GO
 
--- fact_orders: late rate on delivered orders with a delivery date
+-- fact_orders: late rate. Denominator = COUNT(is_late) (measurable orders).
+-- AVG(is_late) gives the correct rate without extra filtering.
 SELECT
-    COUNT(*)                                                       AS total_orders,
-    SUM(CASE WHEN order_status = 'delivered'
-              AND order_delivered_customer_date IS NOT NULL THEN 1 ELSE 0 END)
-                                                                   AS delivered_with_date,
-    SUM(CAST(is_late AS INT))                                      AS late_orders,
-    CAST(100.0 * SUM(CAST(is_late AS INT))
-         / NULLIF(SUM(CASE WHEN order_status = 'delivered'
-              AND order_delivered_customer_date IS NOT NULL THEN 1 ELSE 0 END), 0)
-    AS DECIMAL(5,2))                                               AS late_rate_pct
+    COUNT(*)                              AS total_orders,
+    COUNT(is_late)                        AS measurable_orders,
+    SUM(CAST(is_late AS INT))             AS late_orders,
+    CAST(100.0 * AVG(CAST(is_late AS DECIMAL(10,4)))
+    AS DECIMAL(5,2))                      AS late_rate_pct_avg
 FROM analytics.fact_orders;
 GO
 
--- Latest build log
+-- delivery_days summary (floored elapsed days)
+SELECT
+    COUNT(delivery_days)                                  AS measurable,
+    CAST(AVG(CAST(delivery_days AS DECIMAL(10,4))) AS DECIMAL(10,4)) AS avg_delivery_days,
+    MIN(delivery_days)                                    AS min_days,
+    MAX(delivery_days)                                    AS max_days
+FROM analytics.fact_orders
+WHERE delivery_days IS NOT NULL;
+GO
+
 SELECT step_id, object_name, rows_written
 FROM analytics.build_log
 WHERE run_id = (SELECT MAX(run_id) FROM analytics.build_log)

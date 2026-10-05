@@ -115,8 +115,14 @@ VALUES
     (N'monthly.2018_07.in_scope', N'6233'),
     (N'monthly.2018_07.all_statuses', N'6292'),
     (N'monthly.2018_08.in_scope', N'6421'),
-    (N'monthly.2018_08.all_statuses', N'6512');
+    (N'monthly.2018_08.all_statuses', N'6512'),
+    (N'delivery.avg_delivery_days', N'12.0739'),
+    (N'delivery.measurable_orders', N'96203'),
+    (N'analytic.fact_order_items_rows', N'111752'),
+    (N'excluded.out_of_scope_status', N'1239'),
+    (N'excluded.out_of_window', N'297'),
+    (N'excluded.unclassified', N'0');
 GO
 
-PRINT 'Loaded 93 expected values into clean.test_expected_values';
+PRINT 'Loaded 99 expected values into clean.test_expected_values';
 GO
