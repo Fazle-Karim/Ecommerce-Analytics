@@ -11,9 +11,6 @@
 USE OlistAnalytics;
 GO
 
--- -------------------------------------------------------------------------------
--- 1. Analytics schema + build log
--- -------------------------------------------------------------------------------
 IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = 'analytics')
     EXEC('CREATE SCHEMA analytics');
 GO
@@ -63,23 +60,29 @@ GO
 
 -- ===============================================================================
 -- SECTION 1: dim_date
+--    Deterministic across sessions: day_of_week is computed by DATEDIFF from a
+--    known Monday (1900-01-01); month names and day names come from a static
+--    inline lookup, not DATENAME. is_complete_month was removed because it was
+--    identical to is_in_window.
 -- ===============================================================================
 
 IF OBJECT_ID('analytics.dim_date', 'U') IS NOT NULL DROP TABLE analytics.dim_date;
 
 CREATE TABLE analytics.dim_date (
-    date_key        INT           NOT NULL PRIMARY KEY,   -- yyyymmdd
-    full_date       DATE          NOT NULL,
-    year            INT           NOT NULL,
-    quarter         INT           NOT NULL,
-    month           INT           NOT NULL,
-    month_name      NVARCHAR(20)  NOT NULL,
-    week_of_year    INT           NOT NULL,
-    day_of_week     INT           NOT NULL,   -- 1 = Sunday ... 7 = Saturday
-    day_name        NVARCHAR(20)  NOT NULL,
-    is_in_window    BIT           NOT NULL,
-    is_complete_month BIT         NOT NULL,
-    is_jan_aug      BIT           NOT NULL
+    date_key            INT           NOT NULL PRIMARY KEY,   -- yyyymmdd
+    full_date           DATE          NOT NULL,
+    year                INT           NOT NULL,
+    quarter             INT           NOT NULL,
+    month               INT           NOT NULL,
+    month_name          NVARCHAR(20)  NOT NULL,
+    year_month_key      INT           NOT NULL,               -- e.g. 201701
+    month_label         NVARCHAR(10)  NOT NULL,               -- e.g. '2017-01'
+    month_start_date    DATE          NOT NULL,
+    week_of_year        INT           NOT NULL,
+    day_of_week         INT           NOT NULL,               -- 1 = Mon ... 7 = Sun
+    day_name            NVARCHAR(20)  NOT NULL,
+    is_in_window        BIT           NOT NULL,               -- 2017-01-01 .. 2018-08-31
+    is_jan_aug          BIT           NOT NULL                -- Jan..Aug regardless of year
 );
 
 ;WITH date_range AS (
@@ -88,42 +91,58 @@ CREATE TABLE analytics.dim_date (
     SELECT DATEADD(DAY, 1, d)
     FROM date_range
     WHERE d < '2018-12-31'
+),
+enriched AS (
+    SELECT
+        d,
+        (DATEDIFF(DAY, '19000101', d) % 7) + 1 AS dow        -- 1 = Monday, 7 = Sunday
+    FROM date_range
 )
 INSERT INTO analytics.dim_date
     (date_key, full_date, year, quarter, month, month_name,
+     year_month_key, month_label, month_start_date,
      week_of_year, day_of_week, day_name,
-     is_in_window, is_complete_month, is_jan_aug)
+     is_in_window, is_jan_aug)
 SELECT
-    CAST(CONVERT(NVARCHAR(8), d, 112) AS INT) AS date_key,
-    d,
-    YEAR(d),
-    DATEPART(QUARTER, d),
-    MONTH(d),
-    DATENAME(MONTH, d),
-    DATEPART(ISO_WEEK, d),
-    DATEPART(WEEKDAY, d),
-    DATENAME(WEEKDAY, d),
-    CASE
-        WHEN d >= '2017-01-01' AND d < '2018-09-01' THEN 1
-        ELSE 0
-    END,
-    CASE
-        WHEN d < '2017-01-01' THEN 0
-        WHEN d >= '2018-09-01' THEN 0
-        ELSE 1
-    END,
+    CAST(CONVERT(NVARCHAR(8), d, 112) AS INT)                    AS date_key,
+    d                                                             AS full_date,
+    YEAR(d)                                                       AS year,
+    DATEPART(QUARTER, d)                                          AS quarter,
+    MONTH(d)                                                      AS month,
+    -- Static month name lookup (no DATENAME dependence)
+    CASE MONTH(d)
+        WHEN 1  THEN N'January'   WHEN 2  THEN N'February'
+        WHEN 3  THEN N'March'     WHEN 4  THEN N'April'
+        WHEN 5  THEN N'May'       WHEN 6  THEN N'June'
+        WHEN 7  THEN N'July'      WHEN 8  THEN N'August'
+        WHEN 9  THEN N'September' WHEN 10 THEN N'October'
+        WHEN 11 THEN N'November'  WHEN 12 THEN N'December'
+    END                                                            AS month_name,
+    YEAR(d) * 100 + MONTH(d)                                      AS year_month_key,
+    FORMAT(d, 'yyyy-MM')                                          AS month_label,
+    DATEFROMPARTS(YEAR(d), MONTH(d), 1)                           AS month_start_date,
+    DATEPART(ISO_WEEK, d)                                         AS week_of_year,
+    dow                                                           AS day_of_week,
+    -- Static day name lookup
+    CASE dow
+        WHEN 1 THEN N'Monday'    WHEN 2 THEN N'Tuesday'
+        WHEN 3 THEN N'Wednesday' WHEN 4 THEN N'Thursday'
+        WHEN 5 THEN N'Friday'    WHEN 6 THEN N'Saturday'
+        WHEN 7 THEN N'Sunday'
+    END                                                            AS day_name,
+    CASE WHEN d >= '2017-01-01' AND d < '2018-09-01' THEN 1 ELSE 0 END AS is_in_window,
     CASE
         WHEN d >= '2017-01-01' AND d < '2018-09-01'
          AND MONTH(d) BETWEEN 1 AND 8 THEN 1
         ELSE 0
-    END
-FROM date_range
+    END                                                            AS is_jan_aug
+FROM enriched
 OPTION (MAXRECURSION 2000);
 
 DECLARE @dd_count INT = (SELECT COUNT(*) FROM analytics.dim_date);
 EXEC analytics.usp_log_build
     @step_id          = 'DIM_DATE_BUILD',
-    @step_description = 'Continuous date range 2016-01-01 to 2018-12-31 with flags',
+    @step_description = 'Deterministic date range 2016-01-01 to 2018-12-31',
     @object_name      = 'analytics.dim_date',
     @rows_written     = @dd_count;
 GO
@@ -185,7 +204,7 @@ WHERE p.rn = 1;
 DECLARE @dc_count INT = (SELECT COUNT(*) FROM analytics.dim_customer);
 EXEC analytics.usp_log_build
     @step_id          = 'DIM_CUSTOMER_BUILD',
-    @step_description = 'One row per customer_unique_id in analytic population; latest order wins',
+    @step_description = 'One row per customer_unique_id in analytic population',
     @object_name      = 'analytics.dim_customer',
     @rows_written     = @dc_count;
 GO
@@ -315,25 +334,19 @@ UNION ALL SELECT 'analytics.dim_product',   COUNT(*) FROM analytics.dim_product
 UNION ALL SELECT 'analytics.dim_seller',    COUNT(*) FROM analytics.dim_seller;
 GO
 
-SELECT
-    MIN(full_date) AS min_date,
-    MAX(full_date) AS max_date,
-    SUM(CAST(is_in_window AS INT)) AS in_window_days,
-    SUM(CAST(is_complete_month AS INT)) AS complete_month_days,
-    SUM(CAST(is_jan_aug AS INT)) AS jan_aug_days
-FROM analytics.dim_date;
+-- dim_date spot check
+SELECT TOP 5 date_key, full_date, day_of_week, day_name, month_name, year_month_key, month_label
+FROM analytics.dim_date ORDER BY date_key;
 GO
 
-SELECT
-    COUNT(*) AS total_customers,
-    SUM(CAST(coordinates_missing AS INT)) AS customers_without_coords
-FROM analytics.dim_customer;
+-- 2017-01-02 should be day_of_week = 1 (Monday)
+SELECT date_key, full_date, day_of_week, day_name
+FROM analytics.dim_date WHERE full_date = '2017-01-02';
 GO
 
-SELECT
-    COUNT(*) AS total_sellers,
-    SUM(CAST(coordinates_missing AS INT)) AS sellers_without_coords
-FROM analytics.dim_seller;
+-- 2017-01-08 should be day_of_week = 7 (Sunday)
+SELECT date_key, full_date, day_of_week, day_name
+FROM analytics.dim_date WHERE full_date = '2017-01-08';
 GO
 
 SELECT step_id, object_name, rows_written
