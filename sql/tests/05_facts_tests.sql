@@ -228,6 +228,81 @@ SELECT 'monthly.2017_11.in_scope', e.expected_value, CAST(t.n AS NVARCHAR(50)),
 FROM (SELECT COUNT(*) AS n FROM analytics.fact_orders WHERE date_key >= 20171101 AND date_key < 20171201) t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'monthly.2017_11.in_scope';
 
+INSERT INTO @results
+SELECT 'monthly.all_months', '0', CAST(t.mismatches AS NVARCHAR(50)),
+       CASE WHEN t.mismatches = 0 THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS mismatches
+    FROM (
+        SELECT
+            REPLACE(SUBSTRING(test_name, 9, 7), '_', '-') AS month_label,
+            CAST(expected_value AS INT) AS expected_count
+        FROM clean.test_expected_values
+        WHERE test_name LIKE 'monthly.[12][0-9][0-9][0-9]_[0-9][0-9].in_scope'
+    ) exp
+    JOIN (
+        SELECT
+            FORMAT(order_purchase_timestamp, 'yyyy-MM') AS month_label,
+            COUNT(*) AS actual_count
+        FROM analytics.fact_orders
+        GROUP BY FORMAT(order_purchase_timestamp, 'yyyy-MM')
+    ) act ON act.month_label = exp.month_label
+    WHERE act.actual_count <> exp.expected_count
+) t;
+
+-- ===============================================================================
+-- Top-10 categories: each pinned GMV must exist in the fact table
+-- ===============================================================================
+INSERT INTO @results
+SELECT 'top_categories.all', '0', CAST(t.mismatches AS NVARCHAR(50)),
+       CASE WHEN t.mismatches = 0 THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS mismatches
+    FROM clean.test_expected_values e
+    WHERE e.test_name LIKE 'top_categories.%.gmv'
+      AND CAST(e.expected_value AS DECIMAL(18,2)) NOT IN (
+          SELECT CAST(SUM(price) AS DECIMAL(18,2))
+          FROM analytics.fact_order_items foi
+          JOIN analytics.dim_product dp ON dp.product_key = foi.product_key
+          GROUP BY category_name_english
+      )
+) t;
+
+-- ===============================================================================
+-- Year splits
+-- ===============================================================================
+INSERT INTO @results
+SELECT 'year_splits.in_window_orders_2017', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS n FROM clean.orders
+    WHERE order_status IN ('delivered','shipped','invoiced','processing','approved')
+      AND order_purchase_timestamp >= '2017-01-01'
+      AND order_purchase_timestamp <  '2018-01-01'
+) t
+CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'year_splits.in_window_orders_2017';
+
+INSERT INTO @results
+SELECT 'year_splits.in_window_orders_2018', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS n FROM clean.orders
+    WHERE order_status IN ('delivered','shipped','invoiced','processing','approved')
+      AND order_purchase_timestamp >= '2018-01-01'
+      AND order_purchase_timestamp <  '2018-09-01'
+) t
+CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'year_splits.in_window_orders_2018';
+
+INSERT INTO @results
+SELECT 'year_splits.in_window_orders_2017_2018_all_statuses', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS n FROM clean.orders
+    WHERE order_purchase_timestamp >= '2017-01-01'
+      AND order_purchase_timestamp <  '2018-09-01'
+) t
+CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'year_splits.in_window_orders_2017_2018_all_statuses';
+
 -- ===============================================================================
 -- Exclusion reasons
 -- ===============================================================================

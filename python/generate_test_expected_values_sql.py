@@ -97,11 +97,11 @@ add("analytic.items_total",           f"{pr['items_total']:.2f}")
 # Delivery metrics
 d = baseline.get("delivery", {})
 if d:
-    add("delivery.avg_delivery_days",                    f"{d['avg_delivery_days']:.4f}")
-    add("delivery.measurable_orders",                    d["delivery_measurable_orders"])
-    add("delivery.delivered_before_purchase_count",      0)
+    add("delivery.avg_delivery_days",                 f"{d['avg_delivery_days']:.4f}")
+    add("delivery.measurable_orders",                 d["delivery_measurable_orders"])
+    add("delivery.delivered_before_purchase_count",   0)
 
-# Fact order items row count (computed from raw)
+# Fact order items row count
 import pandas as _pd
 _orders = _pd.read_csv("data/raw/olist_orders_dataset.csv", dtype=str, encoding="utf-8")
 _orders["purchase_dt"] = _pd.to_datetime(_orders["order_purchase_timestamp"], errors="coerce")
@@ -136,6 +136,12 @@ for month, vals in mw.items():
     add(f"monthly.{key}.in_scope",  vals["orders_in_scope"])
     add(f"monthly.{key}.all_statuses", vals["orders_all_statuses"])
 
+# Year splits
+ys = baseline["year_splits"]
+add("year_splits.in_window_orders_2017",                   ys["in_window_orders_2017"])
+add("year_splits.in_window_orders_2018",                   ys["in_window_orders_2018"])
+add("year_splits.in_window_orders_2017_2018_all_statuses", ys["in_window_orders_2017_2018_all_statuses"])
+
 # RFM aggregates
 r2 = baseline.get("rfm", {})
 if r2:
@@ -157,6 +163,12 @@ if c:
     add("cohort.matrix_rows",                c["matrix_rows"])
     add("cohort.cohort_months",              c["cohort_months"])
     add("cohort.pre_2017_customers",         c["pre_2017_customers"])
+
+# Top categories by GMV (item price only, analytic population)
+tc = baseline.get("top_categories_gmv", [])
+for i, entry in enumerate(tc, start=1):
+    add(f"top_categories.{i}.category_name_en", entry["category_name_en"])
+    add(f"top_categories.{i}.gmv",              f"{entry['gmv']:.2f}")
 
 # ---------- Emit ----------
 lines = []

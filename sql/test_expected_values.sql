@@ -123,6 +123,9 @@ VALUES
     (N'monthly.2018_07.all_statuses', N'6292'),
     (N'monthly.2018_08.in_scope', N'6421'),
     (N'monthly.2018_08.all_statuses', N'6512'),
+    (N'year_splits.in_window_orders_2017', N'44375'),
+    (N'year_splits.in_window_orders_2018', N'53530'),
+    (N'year_splits.in_window_orders_2017_2018_all_statuses', N'99092'),
     (N'rfm.customer_count', N'94703'),
     (N'rfm.repeat_customers', N'2874'),
     (N'rfm.segment_champions', N'1229'),
@@ -136,8 +139,28 @@ VALUES
     (N'rfm.f_band_3_plus', N'235'),
     (N'cohort.matrix_rows', N'210'),
     (N'cohort.cohort_months', N'20'),
-    (N'cohort.pre_2017_customers', N'10');
+    (N'cohort.pre_2017_customers', N'10'),
+    (N'top_categories.1.category_name_en', N'health_beauty'),
+    (N'top_categories.1.gmv', N'1251145.54'),
+    (N'top_categories.2.category_name_en', N'watches_gifts'),
+    (N'top_categories.2.gmv', N'1194824.97'),
+    (N'top_categories.3.category_name_en', N'bed_bath_table'),
+    (N'top_categories.3.gmv', N'1035485.07'),
+    (N'top_categories.4.category_name_en', N'sports_leisure'),
+    (N'top_categories.4.gmv', N'977728.77'),
+    (N'top_categories.5.category_name_en', N'computers_accessories'),
+    (N'top_categories.5.gmv', N'902922.70'),
+    (N'top_categories.6.category_name_en', N'furniture_decor'),
+    (N'top_categories.6.gmv', N'721584.27'),
+    (N'top_categories.7.category_name_en', N'housewares'),
+    (N'top_categories.7.gmv', N'625538.73'),
+    (N'top_categories.8.category_name_en', N'cool_stuff'),
+    (N'top_categories.8.gmv', N'619724.39'),
+    (N'top_categories.9.category_name_en', N'auto'),
+    (N'top_categories.9.gmv', N'585177.48'),
+    (N'top_categories.10.category_name_en', N'garden_tools'),
+    (N'top_categories.10.gmv', N'479650.06');
 GO
 
-PRINT 'Loaded 114 expected values into clean.test_expected_values';
+PRINT 'Loaded 137 expected values into clean.test_expected_values';
 GO
