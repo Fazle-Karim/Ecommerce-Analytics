@@ -1,0 +1,35 @@
+Analytics test suite output — sql/tests/05_facts_tests.sql
+
+test_name                                expected       actual         status
+---------------------------------------- -------------- -------------- ------
+fact_orders.row_count                    97905          97905          PASS
+excluded_orders.row_count                1536           1536           PASS
+fact_plus_excluded                       99441          99441          PASS
+dim_date.row_count                       1096           1096           PASS
+dim_customer.row_count                   94703          94703          PASS
+dim_product.row_count                    32578          32578          PASS
+dim_seller.row_count                     3029           3029           PASS
+gmv.fact_order_items                     13449529.68    13449529.68    PASS
+freight.fact_order_items                 2234177.06     2234177.06     PASS
+late.orders                              6531           6531           PASS
+late.denominator                         96203          96203          PASS
+late.rate_pct                            6.79           6.79           PASS
+review.avg_all_orders                    4.0863         4.0863         PASS
+review.avg_late                          2.2709         2.2709         PASS
+review.avg_on_time                       4.2910         4.2910         PASS
+payment.residual                         2762.33        2762.33        PASS
+monthly.2017_01.in_scope                 787            787            PASS
+monthly.2018_08.in_scope                 6421           6421           PASS
+monthly.2017_11.in_scope                 7421           7421           PASS
+fk.fact_orders.customer_key              0              0              PASS
+fk.fact_orders.date_key                  0              0              PASS
+fk.fact_order_items.order_key            0              0              PASS
+fk.fact_order_items.product_key          0              0              PASS
+fk.fact_order_items.seller_key           0              0              PASS
+fact_order_items.no_duplicates           0              0              PASS
+
+passed      failed      total
+----------- ----------- -----------
+25          0           25
+
+All analytics tests passed.

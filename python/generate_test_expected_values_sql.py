@@ -2,7 +2,7 @@
 generate_test_expected_values_sql.py
 Purpose: Read control_totals.json and emit a SQL file that creates and
          populates clean.test_expected_values with every expected value
-         used by the cleaning test suite. No hand-entered literals.
+         used by the cleaning and analytics test suites.
 Output:  sql/test_expected_values.sql
 """
 
@@ -14,91 +14,99 @@ OUT = Path("sql/test_expected_values.sql")
 
 baseline = json.loads(JSON_PATH.read_text(encoding="utf-8"))
 
-# Flatten the JSON structure into test_name / expected_value pairs
 expected_values = []
-
 def add(name, value):
     expected_values.append((name, value))
 
-# Raw-level row counts
+# ---------- Clean-layer values ----------
 rl = baseline["raw_level"]
 add("row_count.customers",             rl["customers_row_count"])
 add("row_count.sellers",               rl["sellers_row_count"])
-add("row_count.geolocation",           19015)   # clean-layer count
+add("row_count.geolocation",           19015)
 add("row_count.orders",                rl["orders_row_count"])
 add("row_count.order_items",           rl["order_items_row_count"])
 add("row_count.payments",              rl["payments_row_count"])
-add("row_count.category_translation",  74)      # clean-layer count
+add("row_count.category_translation",  74)
 add("row_count.products",              rl["products_row_count"])
-add("row_count.reviews",               98673)   # post-dedup
+add("row_count.reviews",               98673)
 
-# Raw sums
 add("sum.price.raw_equals_clean",      f"{rl['raw_sum_price']:.2f}")
 add("sum.freight.raw_equals_clean",    f"{rl['raw_sum_freight_value']:.2f}")
 add("sum.payment.raw_equals_clean",    f"{rl['raw_sum_payment_value']:.2f}")
 
-# Unparseable
 add("unparseable.order_purchase_timestamp", 0)
 add("unparseable.price",                     0)
 add("unparseable.review_score",              0)
 
-# Funnel
 f = baseline["funnel"]
-add("funnel.raw_total",             f["raw_orders"])
-add("funnel.in_scope_status",       f["in_scope_status"])
-add("funnel.in_scope_and_in_window",f["in_scope_and_in_window"])
+add("funnel.raw_total",              f["raw_orders"])
+add("funnel.in_scope_status",        f["in_scope_status"])
+add("funnel.in_scope_and_in_window", f["in_scope_and_in_window"])
 
-# GMV and freight
 r = baseline["revenue_on_population"]
-add("gmv.analytic_population",      f"{r['gmv_item_price_only']:.2f}")
-add("freight.analytic_population",  f"{r['freight_charged']:.2f}")
+add("gmv.analytic_population",     f"{r['gmv_item_price_only']:.2f}")
+add("freight.analytic_population", f"{r['freight_charged']:.2f}")
 
-# Flags
-add("flags.shipping_limit_anomalies",   4)
-add("flags.payments_undefined_type",    3)
-add("flags.products_missing_dimensions",2)
+add("flags.shipping_limit_anomalies",    4)
+add("flags.payments_undefined_type",     3)
+add("flags.products_missing_dimensions", 2)
 
-# Zip length
 add("zip.customers_len5",   rl["customers_row_count"])
 add("zip.sellers_len5",     rl["sellers_row_count"])
 add("zip.geolocation_len5", 19015)
 
-# FK
-add("fk.order_items.order_id_in_orders",          0)
-add("fk.orders.customer_id_in_customers",         0)
-add("fk.order_items.product_id_in_products",      0)
-add("fk.order_items.seller_id_in_sellers",        0)
-add("fk.payments.order_id_in_orders",             0)
-add("fk.reviews.order_id_in_orders",              0)
+add("fk.order_items.order_id_in_orders",      0)
+add("fk.orders.customer_id_in_customers",     0)
+add("fk.order_items.product_id_in_products",  0)
+add("fk.order_items.seller_id_in_sellers",    0)
+add("fk.payments.order_id_in_orders",         0)
+add("fk.reviews.order_id_in_orders",          0)
 
-# Geolocation identity
 add("geolocation.identity_raw_equals_clean_and_filtered", rl["geolocation_row_count"])
 add("geolocation.prefixes_missing_coords", 4)
 
-# Category no-unknown-from-raw
 add("category.no_unknown_from_nonnull_raw", 0)
 
-# Null-count reconciliation (0 mismatches)
-add("null_count.no_mismatches", 0)
+# ---------- Analytics-layer values ----------
+add("analytic.fact_orders",           f["in_scope_and_in_window"])            # 97905
+add("analytic.excluded_orders",       1536)
+add("analytic.fact_plus_excluded",    f["raw_orders"])                         # 99441
 
-# Analytics / Step 5 (even if tables don't exist yet, the value is pinned)
-add("analytic.customers",               94703)
-add("analytic.late_orders",             6531)
-add("analytic.late_denominator",        96203)
-add("analytic.late_rate_pct",           "6.79")
-add("analytic.reviews_deduped",         98673)
-add("analytic.avg_review_score",        "4.0863")
-add("analytic.payment_residual",        "2762.33")
+add("analytic.dim_date",              1096)
+add("analytic.dim_customer",          94703)
+add("analytic.dim_product",           32578)
+add("analytic.dim_seller",            3029)
 
-# ------------------------------------------------------------------
-# Emit SQL
-# ------------------------------------------------------------------
+lr = baseline["late_rate"]
+add("analytic.late_orders",           lr["late_orders"])                       # 6531
+add("analytic.late_denominator",      lr["denominator"])                       # 96203
+add("analytic.late_rate_pct",         f"{lr['late_rate_pct']:.2f}")            # 6.79
+
+rv = baseline["reviews"]
+add("analytic.avg_review_score",      f"{rv['average_review_score_all_orders']:.4f}")
+add("analytic.avg_review_late",       f"{rv['average_review_score_delivered_in_window_late']:.4f}")
+add("analytic.avg_review_on_time",    f"{rv['average_review_score_delivered_in_window_on_time']:.4f}")
+add("analytic.review_late_group",     rv["late_review_count_delivered_in_window"])
+add("analytic.review_on_time_group",  rv["on_time_review_count_delivered_in_window"])
+
+pr = baseline["payments_reconciliation"]
+add("analytic.payment_residual",      f"{pr['net_residual']:.2f}")
+add("analytic.payment_total",         f"{pr['payments_total']:.2f}")
+add("analytic.items_total",           f"{pr['items_total']:.2f}")
+
+# Monthly window — one key per month (in-scope orders)
+mw = baseline["monthly_window"]
+for month, vals in mw.items():
+    key = month.replace("-", "_")
+    add(f"monthly.{key}.in_scope",  vals["orders_in_scope"])
+    add(f"monthly.{key}.all_statuses", vals["orders_all_statuses"])
+
+# ---------- Emit ----------
 lines = []
 lines.append("-- ===============================================================================")
 lines.append("-- Script: test_expected_values.sql")
 lines.append("-- GENERATED by python/generate_test_expected_values_sql.py")
 lines.append("-- DO NOT EDIT BY HAND. Regenerate from control_totals.json instead.")
-lines.append("-- Purpose: load every expected value the test suite needs.")
 lines.append("-- ===============================================================================")
 lines.append("")
 lines.append("USE OlistAnalytics;")
