@@ -9,11 +9,14 @@
 --   1    = late (delivered, non-null delivery date, delivered_date > estimated_date)
 --   0    = on time (delivered, non-null delivery date, delivered_date <= estimated_date)
 --   NULL = not measurable (status != delivered, or no delivery date)
---   AVG(is_late) is therefore correct without extra filtering.
 --
 -- delivery_days: floored whole days between purchase and delivery.
---   Equivalent to pandas (delivered - purchase).dt.days.
 --   NULL if not delivered or if the delta is negative.
+--
+-- customer_order_seq: 1, 2, 3, ... per customer, over the FULL in-scope history
+--   across ALL dates (not restricted to the analytic window). A customer whose
+--   first purchase was in 2016 is NOT flagged as "first" when placing their
+--   first 2017 order.
 -- ===============================================================================
 
 :on error exit
@@ -106,7 +109,9 @@ CREATE TABLE analytics.fact_orders (
     review_score                   INT            NULL,
     payment_total                  DECIMAL(18,2)  NULL,
     item_count                     INT            NOT NULL DEFAULT 0,
-    seller_count                   INT            NOT NULL DEFAULT 0
+    seller_count                   INT            NOT NULL DEFAULT 0,
+    customer_order_seq             INT            NOT NULL,
+    is_first_order                 BIT            NOT NULL
 );
 
 ;WITH population AS (
@@ -142,6 +147,19 @@ pay_agg AS (
     SELECT order_id, SUM(payment_value) AS payment_total
     FROM clean.payments
     GROUP BY order_id
+),
+-- Full in-scope history across ALL dates (not restricted to the analytic window).
+customer_history AS (
+    SELECT
+        o.order_id,
+        c.customer_unique_id,
+        ROW_NUMBER() OVER (
+            PARTITION BY c.customer_unique_id
+            ORDER BY o.order_purchase_timestamp ASC, o.order_id ASC
+        ) AS customer_order_seq
+    FROM clean.orders o
+    JOIN clean.customers c ON c.customer_id = o.customer_id
+    WHERE o.order_status IN ('delivered','shipped','invoiced','processing','approved')
 )
 INSERT INTO analytics.fact_orders
     (order_id, customer_key, date_key,
@@ -150,7 +168,8 @@ INSERT INTO analytics.fact_orders
      order_delivered_carrier_date, order_delivered_customer_date,
      order_estimated_delivery_date,
      delivery_days, is_late, review_score, payment_total,
-     item_count, seller_count)
+     item_count, seller_count,
+     customer_order_seq, is_first_order)
 SELECT
     cr.order_id,
     cr.customer_key,
@@ -183,16 +202,19 @@ SELECT
     r.review_score,
     p.payment_total,
     ISNULL(i.item_count, 0),
-    ISNULL(i.seller_count, 0)
+    ISNULL(i.seller_count, 0),
+    ch.customer_order_seq,
+    CASE WHEN ch.customer_order_seq = 1 THEN 1 ELSE 0 END
 FROM cust_resolved cr
-LEFT JOIN clean.reviews r ON r.order_id = cr.order_id
-LEFT JOIN pay_agg p        ON p.order_id = cr.order_id
-LEFT JOIN items_agg i      ON i.order_id = cr.order_id;
+LEFT JOIN clean.reviews r    ON r.order_id = cr.order_id
+LEFT JOIN pay_agg p          ON p.order_id = cr.order_id
+LEFT JOIN items_agg i        ON i.order_id = cr.order_id
+JOIN customer_history ch     ON ch.order_id = cr.order_id;
 
 DECLARE @fo_count INT = (SELECT COUNT(*) FROM analytics.fact_orders);
 EXEC analytics.usp_log_build
     @step_id          = 'FACT_ORDERS_BUILD',
-    @step_description = 'One row per analytic order; delivery days, is_late NULL semantics, review, payment',
+    @step_description = 'One row per analytic order; delivery days, is_late NULL semantics, review, payment, customer_order_seq',
     @object_name      = 'analytics.fact_orders',
     @rows_written     = @fo_count;
 GO
@@ -212,10 +234,9 @@ GO
 -- Do NOT create a relationship between fact_orders and fact_order_items
 -- in Power BI. Both facts connect directly to shared dimensions.
 --
--- The is_late, review_score, and order_status attributes are copied from
--- order grain. They MUST be aggregated at order grain when used as measures
--- (DISTINCTCOUNT(order_id) or AVERAGEX(VALUES(order_id), ...)). A plain
--- AVG() over item rows would overweight multi-item orders.
+-- is_late, review_score, order_status are copied from order grain. They MUST
+-- be aggregated at order grain (DISTINCTCOUNT(order_id) or AVERAGEX over
+-- VALUES(order_id)). A plain AVG() over item rows overweights multi-item orders.
 -- ===============================================================================
 
 IF OBJECT_ID('analytics.fact_order_items', 'U') IS NOT NULL DROP TABLE analytics.fact_order_items;
@@ -318,6 +339,14 @@ SELECT
     MAX(delivery_days)                                    AS max_days
 FROM analytics.fact_orders
 WHERE delivery_days IS NOT NULL;
+GO
+
+-- customer_order_seq sanity
+SELECT
+    MAX(customer_order_seq) AS max_seq,
+    SUM(CAST(is_first_order AS INT)) AS first_orders,
+    COUNT(DISTINCT customer_key) AS distinct_customers
+FROM analytics.fact_orders;
 GO
 
 SELECT step_id, object_name, rows_written
