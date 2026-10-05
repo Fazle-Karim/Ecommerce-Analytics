@@ -1,9 +1,6 @@
 -- ===============================================================================
 -- Script: 05_facts_tests.sql
 -- Purpose: Validate the analytics layer against pinned expected values.
---          Expected values come from clean.test_expected_values.
---          Results persisted to analytics.test_results.
---          THROWs if any test fails.
 -- ===============================================================================
 
 :on error exit
@@ -41,9 +38,7 @@ DECLARE @results TABLE (
     status      NVARCHAR(10)
 );
 
--- ===============================================================================
--- 1. Row counts
--- ===============================================================================
+-- Row counts
 INSERT INTO @results
 SELECT 'fact_orders.row_count', e.expected_value, CAST(t.n AS NVARCHAR(50)),
        CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
@@ -59,10 +54,7 @@ CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'analytic.excluded_o
 INSERT INTO @results
 SELECT 'fact_plus_excluded', e.expected_value, CAST(t.n AS NVARCHAR(50)),
        CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT (SELECT COUNT(*) FROM analytics.fact_orders)
-         + (SELECT COUNT(*) FROM analytics.excluded_orders) AS n
-) t
+FROM (SELECT (SELECT COUNT(*) FROM analytics.fact_orders)+(SELECT COUNT(*) FROM analytics.excluded_orders) AS n) t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'analytic.fact_plus_excluded';
 
 INSERT INTO @results
@@ -95,28 +87,22 @@ SELECT 'fact_order_items.row_count', e.expected_value, CAST(t.n AS NVARCHAR(50))
 FROM (SELECT COUNT(*) AS n FROM analytics.fact_order_items) t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'analytic.fact_order_items_rows';
 
--- ===============================================================================
--- 2. GMV and freight
--- ===============================================================================
+-- GMV / freight
 INSERT INTO @results
 SELECT 'gmv.fact_order_items', e.expected_value,
        CAST(CAST(t.s AS DECIMAL(18,2)) AS NVARCHAR(50)),
-       CASE WHEN CAST(t.s AS DECIMAL(18,2)) = CAST(e.expected_value AS DECIMAL(18,2))
-            THEN 'PASS' ELSE 'FAIL' END
+       CASE WHEN CAST(t.s AS DECIMAL(18,2)) = CAST(e.expected_value AS DECIMAL(18,2)) THEN 'PASS' ELSE 'FAIL' END
 FROM (SELECT SUM(price) AS s FROM analytics.fact_order_items) t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'gmv.analytic_population';
 
 INSERT INTO @results
 SELECT 'freight.fact_order_items', e.expected_value,
        CAST(CAST(t.s AS DECIMAL(18,2)) AS NVARCHAR(50)),
-       CASE WHEN CAST(t.s AS DECIMAL(18,2)) = CAST(e.expected_value AS DECIMAL(18,2))
-            THEN 'PASS' ELSE 'FAIL' END
+       CASE WHEN CAST(t.s AS DECIMAL(18,2)) = CAST(e.expected_value AS DECIMAL(18,2)) THEN 'PASS' ELSE 'FAIL' END
 FROM (SELECT SUM(freight_value) AS s FROM analytics.fact_order_items) t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'freight.analytic_population';
 
--- ===============================================================================
--- 3. Late rate — numerator, denominator, rate
--- ===============================================================================
+-- Late rate
 INSERT INTO @results
 SELECT 'late.orders', e.expected_value, CAST(t.n AS NVARCHAR(50)),
        CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
@@ -131,17 +117,11 @@ CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'analytic.late_denom
 
 INSERT INTO @results
 SELECT 'late.rate_pct', e.expected_value, CAST(t.rate AS NVARCHAR(50)),
-       CASE WHEN CAST(t.rate AS DECIMAL(5,2)) = CAST(e.expected_value AS DECIMAL(5,2))
-            THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT CAST(100.0 * AVG(CAST(is_late AS DECIMAL(10,4))) AS DECIMAL(5,2)) AS rate
-    FROM analytics.fact_orders
-) t
+       CASE WHEN CAST(t.rate AS DECIMAL(5,2)) = CAST(e.expected_value AS DECIMAL(5,2)) THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT CAST(100.0 * AVG(CAST(is_late AS DECIMAL(10,4))) AS DECIMAL(5,2)) AS rate FROM analytics.fact_orders) t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'analytic.late_rate_pct';
 
--- ===============================================================================
--- 4. Delivery days
--- ===============================================================================
+-- Delivery days
 INSERT INTO @results
 SELECT 'delivery.measurable_orders', e.expected_value, CAST(t.n AS NVARCHAR(50)),
        CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
@@ -151,75 +131,46 @@ CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'delivery.measurable
 INSERT INTO @results
 SELECT 'delivery.avg_delivery_days', e.expected_value,
        CAST(CAST(t.m AS DECIMAL(10,4)) AS NVARCHAR(50)),
-       CASE WHEN CAST(t.m AS DECIMAL(10,4)) = CAST(e.expected_value AS DECIMAL(10,4))
-            THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT AVG(CAST(delivery_days AS DECIMAL(10,4))) AS m
-    FROM analytics.fact_orders
-    WHERE delivery_days IS NOT NULL
-) t
+       CASE WHEN CAST(t.m AS DECIMAL(10,4)) = CAST(e.expected_value AS DECIMAL(10,4)) THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT AVG(CAST(delivery_days AS DECIMAL(10,4))) AS m FROM analytics.fact_orders WHERE delivery_days IS NOT NULL) t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'delivery.avg_delivery_days';
 
 INSERT INTO @results
 SELECT 'delivery.no_negative_days', '0', CAST(t.n AS NVARCHAR(50)),
        CASE WHEN t.n = 0 THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT COUNT(*) AS n FROM analytics.fact_orders WHERE delivery_days < 0
-) t;
+FROM (SELECT COUNT(*) AS n FROM analytics.fact_orders WHERE delivery_days < 0) t;
 
--- ===============================================================================
--- 5. Review means
--- ===============================================================================
+-- Review means
 INSERT INTO @results
 SELECT 'review.avg_all_orders', e.expected_value,
        CAST(CAST(t.m AS DECIMAL(10,4)) AS NVARCHAR(50)),
-       CASE WHEN CAST(t.m AS DECIMAL(10,4)) = CAST(e.expected_value AS DECIMAL(10,4))
-            THEN 'PASS' ELSE 'FAIL' END
+       CASE WHEN CAST(t.m AS DECIMAL(10,4)) = CAST(e.expected_value AS DECIMAL(10,4)) THEN 'PASS' ELSE 'FAIL' END
 FROM (SELECT AVG(CAST(review_score AS DECIMAL(10,4))) AS m FROM clean.reviews) t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'analytic.avg_review_score';
 
 INSERT INTO @results
 SELECT 'review.avg_late', e.expected_value,
        CAST(CAST(t.m AS DECIMAL(10,4)) AS NVARCHAR(50)),
-       CASE WHEN CAST(t.m AS DECIMAL(10,4)) = CAST(e.expected_value AS DECIMAL(10,4))
-            THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT AVG(CAST(review_score AS DECIMAL(10,4))) AS m
-    FROM analytics.fact_orders
-    WHERE is_late = 1 AND review_score IS NOT NULL
-) t
+       CASE WHEN CAST(t.m AS DECIMAL(10,4)) = CAST(e.expected_value AS DECIMAL(10,4)) THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT AVG(CAST(review_score AS DECIMAL(10,4))) AS m FROM analytics.fact_orders WHERE is_late = 1 AND review_score IS NOT NULL) t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'analytic.avg_review_late';
 
 INSERT INTO @results
 SELECT 'review.avg_on_time', e.expected_value,
        CAST(CAST(t.m AS DECIMAL(10,4)) AS NVARCHAR(50)),
-       CASE WHEN CAST(t.m AS DECIMAL(10,4)) = CAST(e.expected_value AS DECIMAL(10,4))
-            THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT AVG(CAST(review_score AS DECIMAL(10,4))) AS m
-    FROM analytics.fact_orders
-    WHERE is_late = 0 AND review_score IS NOT NULL
-) t
+       CASE WHEN CAST(t.m AS DECIMAL(10,4)) = CAST(e.expected_value AS DECIMAL(10,4)) THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT AVG(CAST(review_score AS DECIMAL(10,4))) AS m FROM analytics.fact_orders WHERE is_late = 0 AND review_score IS NOT NULL) t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'analytic.avg_review_on_time';
 
--- ===============================================================================
--- 6. Payment residual
--- ===============================================================================
+-- Payment residual
 INSERT INTO @results
 SELECT 'payment.residual', e.expected_value,
        CAST(CAST(t.residual AS DECIMAL(18,2)) AS NVARCHAR(50)),
-       CASE WHEN CAST(t.residual AS DECIMAL(18,2)) = CAST(e.expected_value AS DECIMAL(18,2))
-            THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT
-        (SELECT SUM(payment_total) FROM analytics.fact_orders)
-      - (SELECT SUM(price) + SUM(freight_value) FROM analytics.fact_order_items) AS residual
-) t
+       CASE WHEN CAST(t.residual AS DECIMAL(18,2)) = CAST(e.expected_value AS DECIMAL(18,2)) THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT (SELECT SUM(payment_total) FROM analytics.fact_orders) - (SELECT SUM(price) + SUM(freight_value) FROM analytics.fact_order_items) AS residual) t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'analytic.payment_residual';
 
--- ===============================================================================
--- 7. Monthly spot-checks
--- ===============================================================================
+-- Monthly
 INSERT INTO @results
 SELECT 'monthly.2017_01.in_scope', e.expected_value, CAST(t.n AS NVARCHAR(50)),
        CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
@@ -238,110 +189,94 @@ SELECT 'monthly.2017_11.in_scope', e.expected_value, CAST(t.n AS NVARCHAR(50)),
 FROM (SELECT COUNT(*) AS n FROM analytics.fact_orders WHERE date_key >= 20171101 AND date_key < 20171201) t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'monthly.2017_11.in_scope';
 
--- ===============================================================================
--- 8. Exclusion reason counts
--- ===============================================================================
+-- Exclusion reasons
 INSERT INTO @results
 SELECT 'excluded.out_of_scope_status', e.expected_value, CAST(t.n AS NVARCHAR(50)),
        CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT COUNT(*) AS n FROM analytics.excluded_orders WHERE exclusion_reason = 'out_of_scope_status'
-) t
+FROM (SELECT COUNT(*) AS n FROM analytics.excluded_orders WHERE exclusion_reason = 'out_of_scope_status') t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'excluded.out_of_scope_status';
 
 INSERT INTO @results
 SELECT 'excluded.out_of_window', e.expected_value, CAST(t.n AS NVARCHAR(50)),
        CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT COUNT(*) AS n FROM analytics.excluded_orders WHERE exclusion_reason = 'out_of_window'
-) t
+FROM (SELECT COUNT(*) AS n FROM analytics.excluded_orders WHERE exclusion_reason = 'out_of_window') t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'excluded.out_of_window';
 
 INSERT INTO @results
 SELECT 'excluded.unclassified', e.expected_value, CAST(t.n AS NVARCHAR(50)),
        CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT COUNT(*) AS n FROM analytics.excluded_orders WHERE exclusion_reason = 'unclassified'
-) t
+FROM (SELECT COUNT(*) AS n FROM analytics.excluded_orders WHERE exclusion_reason = 'unclassified') t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'excluded.unclassified';
 
--- ===============================================================================
--- 9. FK integrity
--- ===============================================================================
+-- FK integrity
 INSERT INTO @results
 SELECT 'fk.fact_orders.customer_key', '0', CAST(t.n AS NVARCHAR(50)),
        CASE WHEN t.n = 0 THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT COUNT(*) AS n FROM analytics.fact_orders f
-    WHERE NOT EXISTS (SELECT 1 FROM analytics.dim_customer d WHERE d.customer_key = f.customer_key)
-) t;
+FROM (SELECT COUNT(*) AS n FROM analytics.fact_orders f WHERE NOT EXISTS (SELECT 1 FROM analytics.dim_customer d WHERE d.customer_key = f.customer_key)) t;
 
 INSERT INTO @results
 SELECT 'fk.fact_orders.date_key', '0', CAST(t.n AS NVARCHAR(50)),
        CASE WHEN t.n = 0 THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT COUNT(*) AS n FROM analytics.fact_orders f
-    WHERE NOT EXISTS (SELECT 1 FROM analytics.dim_date d WHERE d.date_key = f.date_key)
-) t;
+FROM (SELECT COUNT(*) AS n FROM analytics.fact_orders f WHERE NOT EXISTS (SELECT 1 FROM analytics.dim_date d WHERE d.date_key = f.date_key)) t;
 
 INSERT INTO @results
 SELECT 'fk.fact_order_items.order_key', '0', CAST(t.n AS NVARCHAR(50)),
        CASE WHEN t.n = 0 THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT COUNT(*) AS n FROM analytics.fact_order_items f
-    WHERE NOT EXISTS (SELECT 1 FROM analytics.fact_orders fo WHERE fo.order_key = f.order_key)
-) t;
+FROM (SELECT COUNT(*) AS n FROM analytics.fact_order_items f WHERE NOT EXISTS (SELECT 1 FROM analytics.fact_orders fo WHERE fo.order_key = f.order_key)) t;
 
 INSERT INTO @results
 SELECT 'fk.fact_order_items.product_key', '0', CAST(t.n AS NVARCHAR(50)),
        CASE WHEN t.n = 0 THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT COUNT(*) AS n FROM analytics.fact_order_items f
-    WHERE NOT EXISTS (SELECT 1 FROM analytics.dim_product d WHERE d.product_key = f.product_key)
-) t;
+FROM (SELECT COUNT(*) AS n FROM analytics.fact_order_items f WHERE NOT EXISTS (SELECT 1 FROM analytics.dim_product d WHERE d.product_key = f.product_key)) t;
 
 INSERT INTO @results
 SELECT 'fk.fact_order_items.seller_key', '0', CAST(t.n AS NVARCHAR(50)),
        CASE WHEN t.n = 0 THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT COUNT(*) AS n FROM analytics.fact_order_items f
-    WHERE NOT EXISTS (SELECT 1 FROM analytics.dim_seller d WHERE d.seller_key = f.seller_key)
-) t;
+FROM (SELECT COUNT(*) AS n FROM analytics.fact_order_items f WHERE NOT EXISTS (SELECT 1 FROM analytics.dim_seller d WHERE d.seller_key = f.seller_key)) t;
 
 INSERT INTO @results
 SELECT 'fk.fact_order_items.customer_key', '0', CAST(t.n AS NVARCHAR(50)),
        CASE WHEN t.n = 0 THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT COUNT(*) AS n FROM analytics.fact_order_items f
-    WHERE NOT EXISTS (SELECT 1 FROM analytics.dim_customer d WHERE d.customer_key = f.customer_key)
-) t;
+FROM (SELECT COUNT(*) AS n FROM analytics.fact_order_items f WHERE NOT EXISTS (SELECT 1 FROM analytics.dim_customer d WHERE d.customer_key = f.customer_key)) t;
 
 INSERT INTO @results
 SELECT 'fk.fact_order_items.date_key', '0', CAST(t.n AS NVARCHAR(50)),
        CASE WHEN t.n = 0 THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT COUNT(*) AS n FROM analytics.fact_order_items f
-    WHERE NOT EXISTS (SELECT 1 FROM analytics.dim_date d WHERE d.date_key = f.date_key)
-) t;
+FROM (SELECT COUNT(*) AS n FROM analytics.fact_order_items f WHERE NOT EXISTS (SELECT 1 FROM analytics.dim_date d WHERE d.date_key = f.date_key)) t;
 
--- ===============================================================================
--- 10. Item-grain uniqueness
--- ===============================================================================
+-- Constraint existence
+INSERT INTO @results
+SELECT 'constraint.dim_customer.unique_unique_id', '1', CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN t.n = 1 THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM sys.key_constraints kc JOIN sys.tables t ON t.object_id = kc.parent_object_id JOIN sys.schemas s ON s.schema_id = t.schema_id WHERE s.name = 'analytics' AND t.name = 'dim_customer' AND kc.type = 'UQ') t;
+
+INSERT INTO @results
+SELECT 'constraint.dim_product.unique_product_id', '1', CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN t.n = 1 THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM sys.key_constraints kc JOIN sys.tables t ON t.object_id = kc.parent_object_id JOIN sys.schemas s ON s.schema_id = t.schema_id WHERE s.name = 'analytics' AND t.name = 'dim_product' AND kc.type = 'UQ') t;
+
+INSERT INTO @results
+SELECT 'constraint.dim_seller.unique_seller_id', '1', CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN t.n = 1 THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM sys.key_constraints kc JOIN sys.tables t ON t.object_id = kc.parent_object_id JOIN sys.schemas s ON s.schema_id = t.schema_id WHERE s.name = 'analytics' AND t.name = 'dim_seller' AND kc.type = 'UQ') t;
+
+INSERT INTO @results
+SELECT 'constraint.fact_orders.unique_order_id', '1', CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN t.n = 1 THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM sys.key_constraints kc JOIN sys.tables t ON t.object_id = kc.parent_object_id JOIN sys.schemas s ON s.schema_id = t.schema_id WHERE s.name = 'analytics' AND t.name = 'fact_orders' AND kc.type = 'UQ') t;
+
+INSERT INTO @results
+SELECT 'constraint.fact_order_items.unique_natural', '1', CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN t.n = 1 THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM sys.key_constraints kc JOIN sys.tables t ON t.object_id = kc.parent_object_id JOIN sys.schemas s ON s.schema_id = t.schema_id WHERE s.name = 'analytics' AND t.name = 'fact_order_items' AND kc.type = 'UQ') t;
+
+-- Belt-and-suspenders data check
 INSERT INTO @results
 SELECT 'fact_order_items.no_duplicates', '0', CAST(t.n AS NVARCHAR(50)),
        CASE WHEN t.n = 0 THEN 'PASS' ELSE 'FAIL' END
-FROM (
-    SELECT COUNT(*) AS n FROM (
-        SELECT order_id, order_item_id
-        FROM analytics.fact_order_items
-        GROUP BY order_id, order_item_id
-        HAVING COUNT(*) > 1
-    ) x
-) t;
+FROM (SELECT COUNT(*) AS n FROM (SELECT order_id, order_item_id FROM analytics.fact_order_items GROUP BY order_id, order_item_id HAVING COUNT(*) > 1) x) t;
 
--- ===============================================================================
--- 11. Show + persist + throw on failure
--- ===============================================================================
+-- Show / persist / throw
 SELECT test_name, expected, actual, status FROM @results ORDER BY test_id;
 
 SELECT

@@ -14,7 +14,6 @@
 -- delivery_days: floored whole days between purchase and delivery.
 --   Equivalent to pandas (delivered - purchase).dt.days.
 --   NULL if not delivered or if the delta is negative.
---   Computed as DATEDIFF(SECOND, ...) / 86400 (integer division floors).
 -- ===============================================================================
 
 :on error exit
@@ -91,7 +90,7 @@ IF OBJECT_ID('analytics.fact_orders', 'U') IS NOT NULL DROP TABLE analytics.fact
 
 CREATE TABLE analytics.fact_orders (
     order_key                      INT IDENTITY(1,1) PRIMARY KEY,
-    order_id                       NVARCHAR(50)   NOT NULL,
+    order_id                       NVARCHAR(50)   NOT NULL UNIQUE,
     customer_key                   INT            NOT NULL,
     date_key                       INT            NOT NULL,
     customer_id                    NVARCHAR(50)   NOT NULL,
@@ -155,7 +154,7 @@ INSERT INTO analytics.fact_orders
 SELECT
     cr.order_id,
     cr.customer_key,
-    CAST(CONVERT(NVARCHAR(8), cr.order_purchase_timestamp, 112) AS INT) AS date_key,
+    CAST(CONVERT(NVARCHAR(8), cr.order_purchase_timestamp, 112) AS INT),
     cr.customer_id,
     cr.customer_unique_id,
     cr.order_status,
@@ -170,7 +169,7 @@ SELECT
         THEN DATEDIFF(SECOND, cr.order_purchase_timestamp,
                              cr.order_delivered_customer_date) / 86400
         ELSE NULL
-    END AS delivery_days,
+    END,
     CASE
         WHEN cr.order_status = 'delivered'
          AND cr.order_delivered_customer_date IS NOT NULL
@@ -180,7 +179,7 @@ SELECT
             ELSE 0
         END
         ELSE NULL
-    END AS is_late,
+    END,
     r.review_score,
     p.payment_total,
     ISNULL(i.item_count, 0),
@@ -193,7 +192,7 @@ LEFT JOIN items_agg i      ON i.order_id = cr.order_id;
 DECLARE @fo_count INT = (SELECT COUNT(*) FROM analytics.fact_orders);
 EXEC analytics.usp_log_build
     @step_id          = 'FACT_ORDERS_BUILD',
-    @step_description = 'One row per analytic order; delivery days, is_late NULL semantics, review, payment aggregated',
+    @step_description = 'One row per analytic order; delivery days, is_late NULL semantics, review, payment',
     @object_name      = 'analytics.fact_orders',
     @rows_written     = @fo_count;
 GO
@@ -238,7 +237,8 @@ CREATE TABLE analytics.fact_order_items (
     flag_shipping_limit_anomaly BIT           NOT NULL DEFAULT 0,
     is_late                    BIT            NULL,
     review_score               INT            NULL,
-    order_status               NVARCHAR(50)   NOT NULL
+    order_status               NVARCHAR(50)   NOT NULL,
+    CONSTRAINT UQ_fact_order_items_natural UNIQUE (order_id, order_item_id)
 );
 
 INSERT INTO analytics.fact_order_items
@@ -302,8 +302,6 @@ GROUP BY exclusion_reason
 ORDER BY exclusion_reason;
 GO
 
--- fact_orders: late rate. Denominator = COUNT(is_late) (measurable orders).
--- AVG(is_late) gives the correct rate without extra filtering.
 SELECT
     COUNT(*)                              AS total_orders,
     COUNT(is_late)                        AS measurable_orders,
@@ -313,7 +311,6 @@ SELECT
 FROM analytics.fact_orders;
 GO
 
--- delivery_days summary (floored elapsed days)
 SELECT
     COUNT(delivery_days)                                  AS measurable,
     CAST(AVG(CAST(delivery_days AS DECIMAL(10,4))) AS DECIMAL(10,4)) AS avg_delivery_days,

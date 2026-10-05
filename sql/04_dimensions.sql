@@ -1,7 +1,7 @@
 -- ===============================================================================
 -- Script: 04_dimensions.sql
 -- Purpose: Build the analytics dimension tables on top of the clean layer.
---          Dimensions are built BEFORE facts; facts will reference their keys.
+--          Dimensions are built BEFORE facts; facts reference their keys.
 --          Facts and dims are restricted to the analytic population (97,905 orders).
 -- Run order: after 03_cleaning.sql.
 -- ===============================================================================
@@ -61,17 +61,6 @@ BEGIN
 END
 GO
 
--- -------------------------------------------------------------------------------
--- 2. Define the analytic population once as a table variable pattern
---    (used implicitly by every dimension build below)
--- -------------------------------------------------------------------------------
--- Population definition (restated in each query for clarity):
---   clean.orders
---   WHERE order_status IN ('delivered','shipped','invoiced','processing','approved')
---     AND order_purchase_timestamp >= '2017-01-01'
---     AND order_purchase_timestamp <  '2018-09-01'
--- = 97,905 orders.
-
 -- ===============================================================================
 -- SECTION 1: dim_date
 -- ===============================================================================
@@ -88,9 +77,9 @@ CREATE TABLE analytics.dim_date (
     week_of_year    INT           NOT NULL,
     day_of_week     INT           NOT NULL,   -- 1 = Sunday ... 7 = Saturday
     day_name        NVARCHAR(20)  NOT NULL,
-    is_in_window    BIT           NOT NULL,   -- 2017-01-01 .. 2018-08-31
-    is_complete_month BIT         NOT NULL,   -- excludes 2016, 2018-09, 2018-10 (incomplete months)
-    is_jan_aug      BIT           NOT NULL    -- Jan..Aug of a complete-trend year
+    is_in_window    BIT           NOT NULL,
+    is_complete_month BIT         NOT NULL,
+    is_jan_aug      BIT           NOT NULL
 );
 
 ;WITH date_range AS (
@@ -117,17 +106,17 @@ SELECT
     CASE
         WHEN d >= '2017-01-01' AND d < '2018-09-01' THEN 1
         ELSE 0
-    END AS is_in_window,
+    END,
     CASE
         WHEN d < '2017-01-01' THEN 0
         WHEN d >= '2018-09-01' THEN 0
         ELSE 1
-    END AS is_complete_month,
+    END,
     CASE
         WHEN d >= '2017-01-01' AND d < '2018-09-01'
          AND MONTH(d) BETWEEN 1 AND 8 THEN 1
         ELSE 0
-    END AS is_jan_aug
+    END
 FROM date_range
 OPTION (MAXRECURSION 2000);
 
@@ -150,7 +139,7 @@ IF OBJECT_ID('analytics.dim_customer', 'U') IS NOT NULL DROP TABLE analytics.dim
 
 CREATE TABLE analytics.dim_customer (
     customer_key              INT IDENTITY(1,1) PRIMARY KEY,
-    customer_unique_id        NVARCHAR(50)  NOT NULL,   -- natural key
+    customer_unique_id        NVARCHAR(50)  NOT NULL UNIQUE,
     customer_zip_code_prefix  NVARCHAR(5)   NOT NULL,
     customer_city             NVARCHAR(100) NOT NULL,
     customer_state            NVARCHAR(2)   NOT NULL,
@@ -159,9 +148,6 @@ CREATE TABLE analytics.dim_customer (
     coordinates_missing       BIT           NOT NULL DEFAULT 0
 );
 
--- Tie-breaking: latest order wins for city/zip/state. If two orders are on the
--- same timestamp (rare), pick the lexicographically smallest customer_id for
--- deterministic output.
 ;WITH population AS (
     SELECT
         c.customer_unique_id,
@@ -215,8 +201,8 @@ IF OBJECT_ID('analytics.dim_product', 'U') IS NOT NULL DROP TABLE analytics.dim_
 
 CREATE TABLE analytics.dim_product (
     product_key                INT IDENTITY(1,1) PRIMARY KEY,
-    product_id                 NVARCHAR(50)  NOT NULL,   -- natural key
-    product_category_name      NVARCHAR(100) NOT NULL,   -- Portuguese, or 'unknown'
+    product_id                 NVARCHAR(50)  NOT NULL UNIQUE,
+    product_category_name      NVARCHAR(100) NOT NULL,
     category_name_english      NVARCHAR(100) NOT NULL,
     category_display_name      NVARCHAR(100) NOT NULL,
     product_name_length        INT           NULL,
@@ -276,7 +262,7 @@ IF OBJECT_ID('analytics.dim_seller', 'U') IS NOT NULL DROP TABLE analytics.dim_s
 
 CREATE TABLE analytics.dim_seller (
     seller_key                INT IDENTITY(1,1) PRIMARY KEY,
-    seller_id                 NVARCHAR(50)  NOT NULL,   -- natural key
+    seller_id                 NVARCHAR(50)  NOT NULL UNIQUE,
     seller_zip_code_prefix    NVARCHAR(5)   NOT NULL,
     seller_city               NVARCHAR(100) NOT NULL,
     seller_state              NVARCHAR(2)   NOT NULL,
@@ -329,7 +315,6 @@ UNION ALL SELECT 'analytics.dim_product',   COUNT(*) FROM analytics.dim_product
 UNION ALL SELECT 'analytics.dim_seller',    COUNT(*) FROM analytics.dim_seller;
 GO
 
--- dim_date detail
 SELECT
     MIN(full_date) AS min_date,
     MAX(full_date) AS max_date,
@@ -339,21 +324,18 @@ SELECT
 FROM analytics.dim_date;
 GO
 
--- dim_customer: coordinates coverage
 SELECT
     COUNT(*) AS total_customers,
     SUM(CAST(coordinates_missing AS INT)) AS customers_without_coords
 FROM analytics.dim_customer;
 GO
 
--- dim_seller: coordinates coverage
 SELECT
     COUNT(*) AS total_sellers,
     SUM(CAST(coordinates_missing AS INT)) AS sellers_without_coords
 FROM analytics.dim_seller;
 GO
 
--- Latest build log
 SELECT step_id, object_name, rows_written
 FROM analytics.build_log
 WHERE run_id = (SELECT MAX(run_id) FROM analytics.build_log)
