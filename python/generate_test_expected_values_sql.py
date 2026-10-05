@@ -133,6 +133,26 @@ _n_out_of_window = int(
 add("excluded.out_of_scope_status", _n_out_of_scope)
 add("excluded.out_of_window",      _n_out_of_window)
 add("excluded.unclassified",       0)
+# RFM aggregates (from control_totals.json -> rfm)
+r = baseline.get("rfm", {})
+if r:
+    add("rfm.customer_count",             r["customer_count"])
+    add("rfm.repeat_customers",           r["repeat_customers"])
+    add("rfm.segment_champions",          r["segment_champions"])
+    add("rfm.segment_loyal",              r["segment_loyal"])
+    add("rfm.segment_at_risk",            r["segment_at_risk"])
+    add("rfm.segment_new",                r["segment_new"])
+    add("rfm.segment_lost",               r["segment_lost"])
+    add("rfm.f_band_1",                   r["f_band_1"])
+    add("rfm.f_band_2",                   r["f_band_2"])
+    add("rfm.f_band_3_plus",              r["f_band_3_plus"])
+
+# Cohort aggregates
+c = baseline.get("cohort", {})
+if c:
+    add("cohort.matrix_rows",             c["matrix_rows"])
+    add("cohort.cohort_months",           c["cohort_months"])
+
 # ---------- Emit ----------
 lines = []
 lines.append("-- ===============================================================================")

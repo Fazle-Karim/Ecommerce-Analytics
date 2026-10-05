@@ -121,8 +121,20 @@ VALUES
     (N'analytic.fact_order_items_rows', N'111752'),
     (N'excluded.out_of_scope_status', N'1239'),
     (N'excluded.out_of_window', N'297'),
-    (N'excluded.unclassified', N'0');
+    (N'excluded.unclassified', N'0'),
+    (N'rfm.customer_count', N'94703'),
+    (N'rfm.repeat_customers', N'2874'),
+    (N'rfm.segment_champions', N'1229'),
+    (N'rfm.segment_loyal', N'612'),
+    (N'rfm.segment_at_risk', N'1033'),
+    (N'rfm.segment_new', N'36652'),
+    (N'rfm.segment_lost', N'55177'),
+    (N'rfm.f_band_1', N'91829'),
+    (N'rfm.f_band_2', N'2639'),
+    (N'rfm.f_band_3_plus', N'235'),
+    (N'cohort.matrix_rows', N'207'),
+    (N'cohort.cohort_months', N'20');
 GO
 
-PRINT 'Loaded 99 expected values into clean.test_expected_values';
+PRINT 'Loaded 111 expected values into clean.test_expected_values';
 GO
