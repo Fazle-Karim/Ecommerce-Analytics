@@ -162,10 +162,10 @@ SELECT
         WHEN ms.frequency >= 2 AND ms.r_score >= 4 THEN 'Champions'
         WHEN ms.frequency >= 2 AND ms.r_score =  3 THEN 'Loyal'
         WHEN ms.frequency >= 2 AND ms.r_score <= 2 THEN 'At Risk'
-        WHEN ms.frequency =  1 AND ms.r_score >= 4 THEN 'New'
-        WHEN ms.frequency =  1 AND ms.r_score <= 3 THEN 'Lost'
+        WHEN ms.frequency =  1 AND ms.r_score >= 4 THEN 'Recent one-time'
+        WHEN ms.frequency =  1 AND ms.r_score <= 3 THEN 'Lapsed one-time'
         ELSE 'UNCLASSIFIED'
-    END
+        END
 FROM m_scored ms;
 
 DECLARE @rfm_count INT = (SELECT COUNT(*) FROM analytics.customer_rfm);

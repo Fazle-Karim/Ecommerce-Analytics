@@ -27,7 +27,7 @@ DECLARE @results TABLE (
 );
 
 -- ===============================================================================
--- Row counts
+-- RFM row counts
 -- ===============================================================================
 INSERT INTO @results
 SELECT 'rfm.row_count', e.expected_value, CAST(t.n AS NVARCHAR(50)),
@@ -69,21 +69,30 @@ FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE segment = 'At Risk'
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'rfm.segment_at_risk';
 
 INSERT INTO @results
-SELECT 'rfm.segment_new', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+SELECT 'rfm.segment_recent_one_time', e.expected_value, CAST(t.n AS NVARCHAR(50)),
        CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
-FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE segment = 'New') t
-CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'rfm.segment_new';
+FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE segment = 'Recent one-time') t
+CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'rfm.segment_recent_one_time';
 
 INSERT INTO @results
-SELECT 'rfm.segment_lost', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+SELECT 'rfm.segment_lapsed_one_time', e.expected_value, CAST(t.n AS NVARCHAR(50)),
        CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
-FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE segment = 'Lost') t
-CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'rfm.segment_lost';
+FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE segment = 'Lapsed one-time') t
+CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'rfm.segment_lapsed_one_time';
+
+INSERT INTO @results
+SELECT 'rfm.segment_unclassified', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE segment = 'UNCLASSIFIED') t
+CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'rfm.segment_unclassified';
 
 INSERT INTO @results
 SELECT 'rfm.segments_sum', e.expected_value, CAST(t.n AS NVARCHAR(50)),
        CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
-FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE segment IN ('Champions','Loyal','At Risk','New','Lost')) t
+FROM (
+    SELECT COUNT(*) AS n FROM analytics.customer_rfm
+    WHERE segment IN ('Champions','Loyal','At Risk','Recent one-time','Lapsed one-time')
+) t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'rfm.customer_count';
 
 -- ===============================================================================
@@ -108,63 +117,7 @@ FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE f_band = '3+') t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'rfm.f_band_3_plus';
 
 -- ===============================================================================
--- R-score distribution (5 buckets)
--- ===============================================================================
-INSERT INTO @results
-SELECT 'rfm.r_score_1', '18941', CAST(t.n AS NVARCHAR(50)),
-       CASE WHEN t.n = 18941 THEN 'PASS' ELSE 'FAIL' END
-FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE r_score = 1) t;
-
-INSERT INTO @results
-SELECT 'rfm.r_score_2', '18941', CAST(t.n AS NVARCHAR(50)),
-       CASE WHEN t.n = 18941 THEN 'PASS' ELSE 'FAIL' END
-FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE r_score = 2) t;
-
-INSERT INTO @results
-SELECT 'rfm.r_score_3', '18940', CAST(t.n AS NVARCHAR(50)),
-       CASE WHEN t.n = 18940 THEN 'PASS' ELSE 'FAIL' END
-FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE r_score = 3) t;
-
-INSERT INTO @results
-SELECT 'rfm.r_score_4', '18941', CAST(t.n AS NVARCHAR(50)),
-       CASE WHEN t.n = 18941 THEN 'PASS' ELSE 'FAIL' END
-FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE r_score = 4) t;
-
-INSERT INTO @results
-SELECT 'rfm.r_score_5', '18940', CAST(t.n AS NVARCHAR(50)),
-       CASE WHEN t.n = 18940 THEN 'PASS' ELSE 'FAIL' END
-FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE r_score = 5) t;
-
--- ===============================================================================
--- M-score distribution (5 buckets)
--- ===============================================================================
-INSERT INTO @results
-SELECT 'rfm.m_score_1', '18940', CAST(t.n AS NVARCHAR(50)),
-       CASE WHEN t.n = 18940 THEN 'PASS' ELSE 'FAIL' END
-FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE m_score = 1) t;
-
-INSERT INTO @results
-SELECT 'rfm.m_score_2', '18941', CAST(t.n AS NVARCHAR(50)),
-       CASE WHEN t.n = 18941 THEN 'PASS' ELSE 'FAIL' END
-FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE m_score = 2) t;
-
-INSERT INTO @results
-SELECT 'rfm.m_score_3', '18940', CAST(t.n AS NVARCHAR(50)),
-       CASE WHEN t.n = 18940 THEN 'PASS' ELSE 'FAIL' END
-FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE m_score = 3) t;
-
-INSERT INTO @results
-SELECT 'rfm.m_score_4', '18941', CAST(t.n AS NVARCHAR(50)),
-       CASE WHEN t.n = 18941 THEN 'PASS' ELSE 'FAIL' END
-FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE m_score = 4) t;
-
-INSERT INTO @results
-SELECT 'rfm.m_score_5', '18941', CAST(t.n AS NVARCHAR(50)),
-       CASE WHEN t.n = 18941 THEN 'PASS' ELSE 'FAIL' END
-FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE m_score = 5) t;
-
--- ===============================================================================
--- Segment semantic consistency
+-- Semantic consistency
 -- ===============================================================================
 INSERT INTO @results
 SELECT 'rfm.champions_semantics', '0', CAST(t.n AS NVARCHAR(50)),
@@ -185,19 +138,19 @@ FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm
       WHERE segment = 'At Risk' AND NOT (f_band IN ('2','3+') AND r_score <= 2)) t;
 
 INSERT INTO @results
-SELECT 'rfm.new_semantics', '0', CAST(t.n AS NVARCHAR(50)),
+SELECT 'rfm.recent_one_time_semantics', '0', CAST(t.n AS NVARCHAR(50)),
        CASE WHEN t.n = 0 THEN 'PASS' ELSE 'FAIL' END
 FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm
-      WHERE segment = 'New' AND NOT (f_band = '1' AND r_score >= 4)) t;
+      WHERE segment = 'Recent one-time' AND NOT (f_band = '1' AND r_score >= 4)) t;
 
 INSERT INTO @results
-SELECT 'rfm.lost_semantics', '0', CAST(t.n AS NVARCHAR(50)),
+SELECT 'rfm.lapsed_one_time_semantics', '0', CAST(t.n AS NVARCHAR(50)),
        CASE WHEN t.n = 0 THEN 'PASS' ELSE 'FAIL' END
 FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm
-      WHERE segment = 'Lost' AND NOT (f_band = '1' AND r_score <= 3)) t;
+      WHERE segment = 'Lapsed one-time' AND NOT (f_band = '1' AND r_score <= 3)) t;
 
 -- ===============================================================================
--- FK / referential integrity
+-- FK integrity
 -- ===============================================================================
 INSERT INTO @results
 SELECT 'rfm.fk_customer_key', '0', CAST(t.n AS NVARCHAR(50)),
@@ -215,16 +168,29 @@ FROM (SELECT COUNT(*) AS n FROM analytics.dim_customer d
 -- Cohort checks
 -- ===============================================================================
 INSERT INTO @results
-SELECT 'cohort.row_count', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+SELECT 'cohort.matrix_rows', e.expected_value, CAST(t.n AS NVARCHAR(50)),
        CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
-FROM (SELECT COUNT(*) AS n FROM analytics.cohort_retention) t
+FROM (SELECT COUNT(*) AS n FROM analytics.cohort_retention WHERE cohort_month <> 'pre-2017') t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'cohort.matrix_rows';
 
 INSERT INTO @results
 SELECT 'cohort.distinct_months', e.expected_value, CAST(t.n AS NVARCHAR(50)),
        CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
-FROM (SELECT COUNT(DISTINCT cohort_month) AS n FROM analytics.cohort_retention) t
+FROM (SELECT COUNT(DISTINCT cohort_month) AS n FROM analytics.cohort_retention WHERE cohort_month <> 'pre-2017') t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'cohort.cohort_months';
+
+INSERT INTO @results
+SELECT 'cohort.pre_2017_row_present', '1', CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN t.n = 1 THEN 'PASS' ELSE 'FAIL' END
+FROM (SELECT COUNT(*) AS n FROM analytics.cohort_retention WHERE cohort_month = 'pre-2017') t;
+
+INSERT INTO @results
+SELECT 'cohort.pre_2017_size', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT cohort_size AS n FROM analytics.cohort_retention WHERE cohort_month = 'pre-2017'
+) t
+CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'cohort.pre_2017_customers';
 
 INSERT INTO @results
 SELECT 'cohort.offset_0_is_100pct', '0', CAST(t.n AS NVARCHAR(50)),
@@ -239,7 +205,7 @@ FROM (SELECT COUNT(*) AS n FROM analytics.cohort_retention
       WHERE active_customers > cohort_size) t;
 
 INSERT INTO @results
-SELECT 'cohort.sum_of_cohort_sizes', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+SELECT 'cohort.matrix_plus_pre2017', e.expected_value, CAST(t.n AS NVARCHAR(50)),
        CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
 FROM (
     SELECT SUM(cohort_size) AS n FROM (

@@ -2,7 +2,7 @@
 generate_test_expected_values_sql.py
 Purpose: Read control_totals.json and emit a SQL file that creates and
          populates clean.test_expected_values with every expected value
-         used by the cleaning and analytics test suites.
+         used by the test suites.
 Output:  sql/test_expected_values.sql
 """
 
@@ -30,9 +30,9 @@ add("row_count.category_translation",  74)
 add("row_count.products",              rl["products_row_count"])
 add("row_count.reviews",               98673)
 
-add("sum.price.raw_equals_clean",      f"{rl['raw_sum_price']:.2f}")
-add("sum.freight.raw_equals_clean",    f"{rl['raw_sum_freight_value']:.2f}")
-add("sum.payment.raw_equals_clean",    f"{rl['raw_sum_payment_value']:.2f}")
+add("sum.price.clean_equals_pinned",   f"{rl['raw_sum_price']:.2f}")
+add("sum.freight.clean_equals_pinned", f"{rl['raw_sum_freight_value']:.2f}")
+add("sum.payment.clean_equals_pinned", f"{rl['raw_sum_payment_value']:.2f}")
 
 add("unparseable.order_purchase_timestamp", 0)
 add("unparseable.price",                     0)
@@ -68,9 +68,9 @@ add("geolocation.prefixes_missing_coords", 4)
 add("category.no_unknown_from_nonnull_raw", 0)
 
 # ---------- Analytics-layer values ----------
-add("analytic.fact_orders",           f["in_scope_and_in_window"])            # 97905
+add("analytic.fact_orders",           f["in_scope_and_in_window"])
 add("analytic.excluded_orders",       1536)
-add("analytic.fact_plus_excluded",    f["raw_orders"])                         # 99441
+add("analytic.fact_plus_excluded",    f["raw_orders"])
 
 add("analytic.dim_date",              1096)
 add("analytic.dim_customer",          94703)
@@ -78,9 +78,9 @@ add("analytic.dim_product",           32578)
 add("analytic.dim_seller",            3029)
 
 lr = baseline["late_rate"]
-add("analytic.late_orders",           lr["late_orders"])                       # 6531
-add("analytic.late_denominator",      lr["denominator"])                       # 96203
-add("analytic.late_rate_pct",         f"{lr['late_rate_pct']:.2f}")            # 6.79
+add("analytic.late_orders",           lr["late_orders"])
+add("analytic.late_denominator",      lr["denominator"])
+add("analytic.late_rate_pct",         f"{lr['late_rate_pct']:.2f}")
 
 rv = baseline["reviews"]
 add("analytic.avg_review_score",      f"{rv['average_review_score_all_orders']:.4f}")
@@ -94,19 +94,14 @@ add("analytic.payment_residual",      f"{pr['net_residual']:.2f}")
 add("analytic.payment_total",         f"{pr['payments_total']:.2f}")
 add("analytic.items_total",           f"{pr['items_total']:.2f}")
 
-# Monthly window — one key per month (in-scope orders)
-mw = baseline["monthly_window"]
-for month, vals in mw.items():
-    key = month.replace("-", "_")
-    add(f"monthly.{key}.in_scope",  vals["orders_in_scope"])
-    add(f"monthly.{key}.all_statuses", vals["orders_all_statuses"])
 # Delivery metrics
 d = baseline.get("delivery", {})
 if d:
-    add("delivery.avg_delivery_days",        f"{d['avg_delivery_days']:.4f}")
-    add("delivery.measurable_orders",        d["delivery_measurable_orders"])
-# Fact order items row count (computed in pandas from the analytic population)
-# Computed independently: items whose order is in the analytic population
+    add("delivery.avg_delivery_days",                    f"{d['avg_delivery_days']:.4f}")
+    add("delivery.measurable_orders",                    d["delivery_measurable_orders"])
+    add("delivery.delivered_before_purchase_count",      0)
+
+# Fact order items row count (computed from raw)
 import pandas as _pd
 _orders = _pd.read_csv("data/raw/olist_orders_dataset.csv", dtype=str, encoding="utf-8")
 _orders["purchase_dt"] = _pd.to_datetime(_orders["order_purchase_timestamp"], errors="coerce")
@@ -133,25 +128,35 @@ _n_out_of_window = int(
 add("excluded.out_of_scope_status", _n_out_of_scope)
 add("excluded.out_of_window",      _n_out_of_window)
 add("excluded.unclassified",       0)
-# RFM aggregates (from control_totals.json -> rfm)
-r = baseline.get("rfm", {})
-if r:
-    add("rfm.customer_count",             r["customer_count"])
-    add("rfm.repeat_customers",           r["repeat_customers"])
-    add("rfm.segment_champions",          r["segment_champions"])
-    add("rfm.segment_loyal",              r["segment_loyal"])
-    add("rfm.segment_at_risk",            r["segment_at_risk"])
-    add("rfm.segment_new",                r["segment_new"])
-    add("rfm.segment_lost",               r["segment_lost"])
-    add("rfm.f_band_1",                   r["f_band_1"])
-    add("rfm.f_band_2",                   r["f_band_2"])
-    add("rfm.f_band_3_plus",              r["f_band_3_plus"])
+
+# Monthly window
+mw = baseline["monthly_window"]
+for month, vals in mw.items():
+    key = month.replace("-", "_")
+    add(f"monthly.{key}.in_scope",  vals["orders_in_scope"])
+    add(f"monthly.{key}.all_statuses", vals["orders_all_statuses"])
+
+# RFM aggregates
+r2 = baseline.get("rfm", {})
+if r2:
+    add("rfm.customer_count",                r2["customer_count"])
+    add("rfm.repeat_customers",              r2["repeat_customers"])
+    add("rfm.segment_champions",             r2["segment_champions"])
+    add("rfm.segment_loyal",                 r2["segment_loyal"])
+    add("rfm.segment_at_risk",               r2["segment_at_risk"])
+    add("rfm.segment_recent_one_time",       r2["segment_recent_one_time"])
+    add("rfm.segment_lapsed_one_time",       r2["segment_lapsed_one_time"])
+    add("rfm.segment_unclassified",          r2["segment_unclassified"])
+    add("rfm.f_band_1",                      r2["f_band_1"])
+    add("rfm.f_band_2",                      r2["f_band_2"])
+    add("rfm.f_band_3_plus",                 r2["f_band_3_plus"])
 
 # Cohort aggregates
 c = baseline.get("cohort", {})
 if c:
-    add("cohort.matrix_rows",             c["matrix_rows"])
-    add("cohort.cohort_months",           c["cohort_months"])
+    add("cohort.matrix_rows",                c["matrix_rows"])
+    add("cohort.cohort_months",              c["cohort_months"])
+    add("cohort.pre_2017_customers",         c["pre_2017_customers"])
 
 # ---------- Emit ----------
 lines = []
