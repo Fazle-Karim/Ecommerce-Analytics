@@ -231,5 +231,21 @@
   "delivery": {
     "avg_delivery_days": 12.0739,
     "delivery_measurable_orders": 96203
+  },
+  "rfm": {
+    "customer_count": 94703,
+    "repeat_customers": 2874,
+    "segment_champions": 1229,
+    "segment_loyal": 612,
+    "segment_at_risk": 1033,
+    "segment_new": 36652,
+    "segment_lost": 55177,
+    "f_band_1": 91829,
+    "f_band_2": 2639,
+    "f_band_3_plus": 235
+  },
+  "cohort": {
+    "cohort_months": 20,
+    "matrix_rows": 207
   }
 }
