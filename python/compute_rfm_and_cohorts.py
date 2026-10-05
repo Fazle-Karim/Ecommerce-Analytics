@@ -4,13 +4,13 @@ Purpose: Compute RFM segments and cohort retention in pandas. Writes ONLY
          the aggregates back into documentation/control_totals.json.
          The SQL implementation in 06_rfm_cohorts.sql must reproduce them.
 
-Output:  documentation/control_totals.json (updated in place)
-         documentation/rfm_cohorts_reference.json (aggregates only)
+Both sides use the same bucket rule: rank by (sort_key, customer_unique_id ASC),
+then assign buckets by FLOOR(N * 0.2), FLOOR(N * 0.4), FLOOR(N * 0.6),
+FLOOR(N * 0.8). No NTILE, no pd.cut — the boundaries are identical integers.
 """
 
 import json
 import pandas as pd
-import numpy as np
 from pathlib import Path
 
 RAW       = Path("data/raw")
@@ -32,11 +32,9 @@ custs  = pd.read_csv(RAW / "olist_customers_dataset.csv", dtype=str, encoding="u
 orders["purchase_dt"] = pd.to_datetime(orders["order_purchase_timestamp"], errors="coerce")
 items["price"]        = pd.to_numeric(items["price"], errors="coerce")
 
-# Join orders -> customers on customer_id
 orders = orders.merge(custs[["customer_id", "customer_unique_id"]],
                      on="customer_id", how="left")
 
-# Analytic population
 pop = orders[
     orders["order_status"].isin(IN_SCOPE) &
     (orders["purchase_dt"] >= WINDOW_START) &
@@ -45,13 +43,8 @@ pop = orders[
 
 print(f"Analytic population orders: {len(pop):,}")
 
-# ---------------------------------------------------------------------------
-# Build per-customer aggregate: last purchase ts, order count, monetary
-# Monetary = SUM(price) across items in the customer's analytic orders
-# ---------------------------------------------------------------------------
 pop_items = items[items["order_id"].isin(pop["order_id"])].copy()
 items_per_order = pop_items.groupby("order_id")["price"].sum().rename("order_value")
-
 pop_with_value = pop.merge(items_per_order, on="order_id", how="left")
 
 per_customer = pop_with_value.groupby("customer_unique_id").agg(
@@ -61,55 +54,63 @@ per_customer = pop_with_value.groupby("customer_unique_id").agg(
 ).reset_index()
 
 print(f"Unique customers: {len(per_customer):,}")
-print(f"  F=1:  {(per_customer['frequency'] == 1).sum():,}")
-print(f"  F=2:  {(per_customer['frequency'] == 2).sum():,}")
-print(f"  F>=3: {(per_customer['frequency'] >= 3).sum():,}")
-print(f"  F>=2: {(per_customer['frequency'] >= 2).sum():,}")
 
-# ---------------------------------------------------------------------------
-# Recency in days to snapshot
-# ---------------------------------------------------------------------------
-per_customer["recency_days"] = (SNAPSHOT - per_customer["last_purchase_ts"]).dt.days
-
-# ---------------------------------------------------------------------------
-# R score: NTILE(5) on last_purchase_ts. Highest ts = best = 5.
-# We sort DESC and use qcut with 5 bins. Ties in timestamp fall in the same bin.
-# ---------------------------------------------------------------------------
-per_customer = per_customer.sort_values("last_purchase_ts", ascending=False).reset_index(drop=True)
-
-# Use rank-based quintiles so exact ties stay together.
-# pandas qcut with duplicates='drop' may not give exactly 5 bins; use rank method.
-per_customer["r_rank"] = per_customer["last_purchase_ts"].rank(method="first", ascending=False)
 n = len(per_customer)
 
-# Assign R score 5..1 top-to-bottom
-per_customer["r_score"] = pd.cut(
-    per_customer["r_rank"],
-    bins=[0, n*0.2, n*0.4, n*0.6, n*0.8, n],
-    labels=[5, 4, 3, 2, 1],
-    include_lowest=True
-).astype(int)
+# ---------------------------------------------------------------------------
+# Bucket boundaries — the same integers SQL uses
+# ---------------------------------------------------------------------------
+b20 = int(n * 0.2)   # 18940
+b40 = int(n * 0.4)
+b60 = int(n * 0.6)
+b80 = int(n * 0.8)
 
 # ---------------------------------------------------------------------------
-# F band: 1, 2, 3+
+# R score: rank by (last_purchase_ts DESC, customer_unique_id ASC)
+# Assign R=5 to top b20, R=4 to next, etc.
+# ---------------------------------------------------------------------------
+per_customer = per_customer.sort_values(
+    ["last_purchase_ts", "customer_unique_id"],
+    ascending=[False, True]
+).reset_index(drop=True)
+
+per_customer["r_rank"] = range(1, n + 1)
+
+def r_score(rank):
+    if rank <= b20: return 5
+    if rank <= b40: return 4
+    if rank <= b60: return 3
+    if rank <= b80: return 2
+    return 1
+
+per_customer["r_score"] = per_customer["r_rank"].apply(r_score)
+
+# ---------------------------------------------------------------------------
+# F band
 # ---------------------------------------------------------------------------
 per_customer["f_band"] = per_customer["frequency"].apply(
     lambda x: "1" if x == 1 else ("2" if x == 2 else "3+")
 )
 
 # ---------------------------------------------------------------------------
-# M score: NTILE(5) on monetary. Ties broken by customer_unique_id ASC.
+# M score: rank by (monetary ASC, customer_unique_id ASC)
+# Assign M=1 to bottom b20, M=5 to top
 # ---------------------------------------------------------------------------
 per_customer = per_customer.sort_values(
-    ["monetary", "customer_unique_id"], ascending=[True, True]
+    ["monetary", "customer_unique_id"],
+    ascending=[True, True]
 ).reset_index(drop=True)
-per_customer["m_rank"] = range(1, len(per_customer) + 1)
-per_customer["m_score"] = pd.cut(
-    per_customer["m_rank"],
-    bins=[0, n*0.2, n*0.4, n*0.6, n*0.8, n],
-    labels=[1, 2, 3, 4, 5],
-    include_lowest=True
-).astype(int)
+
+per_customer["m_rank"] = range(1, n + 1)
+
+def m_score(rank):
+    if rank <= b20: return 1
+    if rank <= b40: return 2
+    if rank <= b60: return 3
+    if rank <= b80: return 4
+    return 5
+
+per_customer["m_score"] = per_customer["m_rank"].apply(m_score)
 
 # ---------------------------------------------------------------------------
 # Segment assignment
@@ -154,7 +155,6 @@ orders_with_cohort = orders_for_cohort.merge(
     on="customer_unique_id", how="left"
 )
 
-# month_offset = (order month - cohort month) in months
 def month_diff(a, b):
     ay, am = int(a[:4]), int(a[5:7])
     by, bm = int(b[:4]), int(b[5:7])
@@ -164,7 +164,6 @@ orders_with_cohort["month_offset"] = orders_with_cohort.apply(
     lambda r: month_diff(r["order_month"], r["cohort_month"]), axis=1
 )
 
-# Distinct active customers per cohort + offset
 active = orders_with_cohort.groupby(
     ["cohort_month", "month_offset"]
 )["customer_unique_id"].nunique().rename("active_customers").reset_index()
@@ -178,7 +177,7 @@ print(f"\nCohort matrix rows: {len(cohort_matrix):,}")
 print(f"Cohort months: {cohort_matrix['cohort_month'].nunique()}")
 
 # ---------------------------------------------------------------------------
-# Write aggregates into control_totals.json
+# Write aggregates
 # ---------------------------------------------------------------------------
 data = json.loads(JSON_PATH.read_text(encoding="utf-8"))
 
@@ -204,7 +203,6 @@ data["cohort"] = cohort
 
 JSON_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
-# Reference snapshot: aggregates only (row-per-cohort-month is optional here)
 ref = {
     "generated_at":  str(pd.Timestamp.now()),
     "rfm":           rfm,
