@@ -1,8 +1,6 @@
 -- ===============================================================================
 -- Script: 06_rfm_cohorts_tests.sql
--- Purpose: Validate analytics.customer_rfm and analytics.cohort_retention
---          against pinned expected values and internal consistency rules.
---          THROWs if any test fails.
+-- Purpose: Validate analytics.customer_rfm and analytics.cohort_retention.
 -- ===============================================================================
 
 :on error exit
@@ -27,7 +25,7 @@ DECLARE @results TABLE (
 );
 
 -- ===============================================================================
--- RFM row counts
+-- RFM row counts and keys
 -- ===============================================================================
 INSERT INTO @results
 SELECT 'rfm.row_count', e.expected_value, CAST(t.n AS NVARCHAR(50)),
@@ -117,7 +115,28 @@ FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE f_band = '3+') t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'rfm.f_band_3_plus';
 
 -- ===============================================================================
--- Semantic consistency
+-- Review group sizes
+-- ===============================================================================
+INSERT INTO @results
+SELECT 'analytic.review_late_group', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS n FROM analytics.fact_orders
+    WHERE is_late = 1 AND review_score IS NOT NULL
+) t
+CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'analytic.review_late_group';
+
+INSERT INTO @results
+SELECT 'analytic.review_on_time_group', e.expected_value, CAST(t.n AS NVARCHAR(50)),
+       CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT COUNT(*) AS n FROM analytics.fact_orders
+    WHERE is_late = 0 AND review_score IS NOT NULL
+) t
+CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'analytic.review_on_time_group';
+
+-- ===============================================================================
+-- Segment semantics
 -- ===============================================================================
 INSERT INTO @results
 SELECT 'rfm.champions_semantics', '0', CAST(t.n AS NVARCHAR(50)),
