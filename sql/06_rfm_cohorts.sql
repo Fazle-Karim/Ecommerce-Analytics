@@ -26,6 +26,13 @@
 --
 -- Run order: after 05_facts.sql and 04_dimensions.sql.
 -- ===============================================================================
+-- ===============================================================================
+-- SQLCMD variables — single source of truth for the analysis window
+-- ===============================================================================
+:setvar WindowStart    "2017-01-01"
+:setvar WindowEnd      "2018-09-01"
+:setvar SnapshotDate   "2018-08-31"
+:setvar SnapshotMonth  "2018-08-01"
 
 :on error exit
 
@@ -146,7 +153,7 @@ SELECT
     ms.customer_key,
     ms.customer_unique_id,
     ms.last_purchase_ts,
-    FLOOR(DATEDIFF(SECOND, ms.last_purchase_ts, '2018-08-31 00:00:00') / 86400.0),
+    FLOOR(DATEDIFF(SECOND, ms.last_purchase_ts, '$(SnapshotDate) 00:00:00') / 86400.0),
     ms.frequency,
     ISNULL(ms.monetary, 0),
     ms.r_score,
@@ -206,7 +213,7 @@ SELECT
     c.customer_unique_id,
     MIN(o.order_purchase_timestamp) AS first_purchase_ts,
     CASE
-        WHEN MIN(o.order_purchase_timestamp) < '2017-01-01' THEN 'pre-2017'
+        WHEN MIN(o.order_purchase_timestamp) < '$(WindowStart)' THEN 'pre-2017'
         ELSE CONVERT(CHAR(7), MIN(o.order_purchase_timestamp), 120)
     END
 FROM clean.orders o
@@ -305,7 +312,7 @@ CROSS APPLY GENERATE_SERIES(
     DATEDIFF(MONTH,
         DATEFROMPARTS(CAST(LEFT(cs.cohort_month, 4) AS INT),
                       CAST(RIGHT(cs.cohort_month, 2) AS INT), 1),
-        '2018-08-01'
+        '$(SnapshotMonth)'
     )
 ) AS s
 LEFT JOIN #active a
