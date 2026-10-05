@@ -4,22 +4,36 @@
 --
 -- RFM
 --   Recency: days from last purchase to 2018-08-31.
---   R score: 5 = most recent, 1 = least recent. Bucket boundaries computed
---            with FLOOR(N * 0.2), FLOOR(N * 0.4), FLOOR(N * 0.6), FLOOR(N * 0.8)
---            on a rank ordered by (last_purchase_ts DESC, customer_unique_id ASC).
---            This exactly mirrors the pandas quintile rule.
+--   R score: 5 = most recent, 1 = least recent.
+--            Bucket boundaries: FLOOR(N * 0.2), FLOOR(N * 0.4),
+--            FLOOR(N * 0.6), FLOOR(N * 0.8) applied to a rank ordered by
+--            (last_purchase_ts DESC, customer_unique_id ASC). Matches pandas.
 --   Frequency: bands of 1, 2, 3+ orders within the analytic population.
---   Monetary: SUM(price). M score 1..5 by the same floor-of-fraction rule
---             on monetary ASC, customer_unique_id ASC.
+--   Monetary: SUM(price), M score by FLOOR rule on
+--            (monetary ASC, customer_unique_id ASC).
 --
--- Segments:
---   Champions: F >= 2 AND R >= 4
---   Loyal:     F >= 2 AND R =  3
---   At Risk:   F >= 2 AND R <= 2
---   New:       F =  1 AND R >= 4
---   Lost:      F =  1 AND R <= 3
+-- Segments (explicit WHEN branches + UNCLASSIFIED guard):
+--   Champions:   F >= 2 AND R >= 4
+--   Loyal:       F >= 2 AND R =  3
+--   At Risk:     F >= 2 AND R <= 2
+--   New:         F =  1 AND R >= 4
+--   Lost:        F =  1 AND R <= 3
+--   (Segment rename to Recent/Lapsed one-time is deferred to Phase B.)
 --
--- Run order: after 05_facts.sql.
+-- Cohorts
+--   Cohort month = month of the customer's FIRST-EVER in-scope order
+--                  across ALL dates (from clean.orders, not fact_orders).
+--   Customers whose first-ever in-scope order predates 2017-01-01 go into
+--   a single sentinel row with cohort_month = 'pre-2017'.
+--   The matrix covers the 20 in-window cohort months (2017-01 .. 2018-08)
+--   and reports every observable (cohort_month, month_offset) cell —
+--   including cells with zero returning customers.
+--
+--   An observable cell = a month_offset where at least one day of data
+--   exists beyond the cohort_month start. Cells not yet observable get
+--   no row.
+--
+-- Run order: after 05_facts.sql and 04_dimensions.sql.
 -- ===============================================================================
 
 :on error exit
@@ -44,7 +58,7 @@ PRINT 'RFM + cohorts layer run_id = ' + CAST(@run_id AS NVARCHAR(10));
 GO
 
 -- ===============================================================================
--- SECTION 1: customer_rfm
+-- SECTION 1: customer_rfm  (unchanged logic; kept identical to prior version)
 -- ===============================================================================
 
 IF OBJECT_ID('analytics.customer_rfm', 'U') IS NOT NULL DROP TABLE analytics.customer_rfm;
@@ -88,7 +102,6 @@ r_bucketed AS (
     SELECT
         rr.*,
         t.n,
-        -- Boundaries as integers, matching pandas FLOOR(N * fraction)
         CAST(FLOOR(t.n * 0.2) AS INT) AS b20,
         CAST(FLOOR(t.n * 0.4) AS INT) AS b40,
         CAST(FLOOR(t.n * 0.6) AS INT) AS b60,
@@ -150,11 +163,13 @@ SELECT
         WHEN ms.frequency >= 2 AND ms.r_score =  3 THEN 'Loyal'
         WHEN ms.frequency >= 2 AND ms.r_score <= 2 THEN 'At Risk'
         WHEN ms.frequency =  1 AND ms.r_score >= 4 THEN 'New'
-        ELSE 'Lost'
+        WHEN ms.frequency =  1 AND ms.r_score <= 3 THEN 'Lost'
+        ELSE 'UNCLASSIFIED'
     END
 FROM m_scored ms;
 
 DECLARE @rfm_count INT = (SELECT COUNT(*) FROM analytics.customer_rfm);
+DECLARE @rfm_unclassified INT = (SELECT COUNT(*) FROM analytics.customer_rfm WHERE segment = 'UNCLASSIFIED');
 EXEC analytics.usp_log_build
     @step_id          = 'CUSTOMER_RFM_BUILD',
     @step_description = 'One row per customer with R/F/M scores and segment',
@@ -172,73 +187,168 @@ GO
 IF OBJECT_ID('analytics.cohort_retention', 'U') IS NOT NULL DROP TABLE analytics.cohort_retention;
 
 CREATE TABLE analytics.cohort_retention (
-    cohort_month      NVARCHAR(7)   NOT NULL,
-    month_offset      INT           NOT NULL,
-    cohort_size       INT           NOT NULL,
-    active_customers  INT           NOT NULL,
-    retention_pct     DECIMAL(7,4)  NOT NULL,
+    cohort_month       NVARCHAR(10)   NOT NULL,   -- 'yyyy-MM' or 'pre-2017'
+    cohort_month_start DATE           NULL,       -- NULL for the pre-2017 sentinel
+    month_offset       INT            NOT NULL,
+    cohort_size        INT            NOT NULL,
+    active_customers   INT            NOT NULL,
+    retention_pct      DECIMAL(7,4)   NOT NULL,
     PRIMARY KEY (cohort_month, month_offset)
 );
 
-;WITH orders_with_month AS (
-    SELECT
-        f.order_key,
-        f.customer_key,
-        f.customer_unique_id,
-        f.order_purchase_timestamp,
-        FORMAT(f.order_purchase_timestamp, 'yyyy-MM') AS order_month
-    FROM analytics.fact_orders f
+-- ---------------------------------------------------------------------------
+-- 2a. Full-history first purchase per customer (in-scope orders, all dates)
+-- ---------------------------------------------------------------------------
+IF OBJECT_ID('tempdb..#cust_first') IS NOT NULL DROP TABLE #cust_first;
+CREATE TABLE #cust_first (
+    customer_unique_id NVARCHAR(50) NOT NULL PRIMARY KEY,
+    first_purchase_ts  DATETIME2    NOT NULL,
+    first_cohort_month NVARCHAR(10) NOT NULL
+);
+
+INSERT INTO #cust_first (customer_unique_id, first_purchase_ts, first_cohort_month)
+SELECT
+    c.customer_unique_id,
+    MIN(o.order_purchase_timestamp) AS first_purchase_ts,
+    CASE
+        WHEN MIN(o.order_purchase_timestamp) < '2017-01-01' THEN 'pre-2017'
+        ELSE FORMAT(MIN(o.order_purchase_timestamp), 'yyyy-MM')
+    END
+FROM clean.orders o
+JOIN clean.customers c ON c.customer_id = o.customer_id
+WHERE o.order_status IN ('delivered','shipped','invoiced','processing','approved')
+GROUP BY c.customer_unique_id;
+GO
+
+-- ---------------------------------------------------------------------------
+-- 2b. Pre-2017 sentinel row (customers in RFM whose first-ever order is pre-2017)
+-- ---------------------------------------------------------------------------
+INSERT INTO analytics.cohort_retention
+    (cohort_month, cohort_month_start, month_offset,
+     cohort_size, active_customers, retention_pct)
+SELECT
+    'pre-2017',
+    NULL,
+    0,
+    COUNT(*),
+    COUNT(*),
+    CAST(100.0 AS DECIMAL(7,4))
+FROM analytics.customer_rfm r
+JOIN #cust_first cf ON cf.customer_unique_id = r.customer_unique_id
+WHERE cf.first_cohort_month = 'pre-2017';
+GO
+
+-- ---------------------------------------------------------------------------
+-- 2c. Cohort observations: every in-window order of every in-window-first customer
+-- ---------------------------------------------------------------------------
+IF OBJECT_ID('tempdb..#cohort_orders') IS NOT NULL DROP TABLE #cohort_orders;
+CREATE TABLE #cohort_orders (
+    customer_unique_id NVARCHAR(50) NOT NULL,
+    cohort_month       NVARCHAR(7)  NOT NULL,
+    order_month        NVARCHAR(7)  NOT NULL,
+    month_offset       INT           NOT NULL
+);
+
+INSERT INTO #cohort_orders (customer_unique_id, cohort_month, order_month, month_offset)
+SELECT
+    c.customer_unique_id,
+    cf.first_cohort_month AS cohort_month,
+    FORMAT(o.order_purchase_timestamp, 'yyyy-MM') AS order_month,
+    DATEDIFF(MONTH,
+        DATEFROMPARTS(CAST(LEFT(cf.first_cohort_month, 4) AS INT),
+                      CAST(RIGHT(cf.first_cohort_month, 2) AS INT), 1),
+        DATEFROMPARTS(CAST(LEFT(FORMAT(o.order_purchase_timestamp,'yyyy-MM'), 4) AS INT),
+                      CAST(RIGHT(FORMAT(o.order_purchase_timestamp,'yyyy-MM'), 2) AS INT), 1)
+    ) AS month_offset
+FROM clean.orders o
+JOIN clean.customers c ON c.customer_id = o.customer_id
+JOIN #cust_first cf ON cf.customer_unique_id = c.customer_unique_id
+WHERE o.order_status IN ('delivered','shipped','invoiced','processing','approved')
+  AND cf.first_cohort_month <> 'pre-2017';
+GO
+
+-- ---------------------------------------------------------------------------
+-- 2d. Cohort sizes (only in-window-first customers)
+-- ---------------------------------------------------------------------------
+IF OBJECT_ID('tempdb..#cohort_size') IS NOT NULL DROP TABLE #cohort_size;
+CREATE TABLE #cohort_size (
+    cohort_month NVARCHAR(7) NOT NULL PRIMARY KEY,
+    cohort_size  INT          NOT NULL
+);
+
+INSERT INTO #cohort_size (cohort_month, cohort_size)
+SELECT first_cohort_month, COUNT(*)
+FROM #cust_first
+WHERE first_cohort_month <> 'pre-2017'
+GROUP BY first_cohort_month;
+GO
+
+-- ---------------------------------------------------------------------------
+-- 2e. Active counts per (cohort_month, month_offset)
+-- ---------------------------------------------------------------------------
+IF OBJECT_ID('tempdb..#active') IS NOT NULL DROP TABLE #active;
+CREATE TABLE #active (
+    cohort_month     NVARCHAR(7) NOT NULL,
+    month_offset     INT         NOT NULL,
+    active_customers INT         NOT NULL,
+    PRIMARY KEY (cohort_month, month_offset)
+);
+
+INSERT INTO #active (cohort_month, month_offset, active_customers)
+SELECT cohort_month, month_offset, COUNT(DISTINCT customer_unique_id)
+FROM #cohort_orders
+GROUP BY cohort_month, month_offset;
+GO
+
+-- ---------------------------------------------------------------------------
+-- 2f. Full triangle: every observable (cohort_month, month_offset)
+--     Observable = offset <= months between cohort_month and 2018-08 (snapshot)
+-- ---------------------------------------------------------------------------
+;WITH months AS (
+    SELECT DISTINCT cohort_month FROM #cohort_size
 ),
-first_month AS (
+grid AS (
     SELECT
-        customer_key,
-        MIN(order_purchase_timestamp) AS first_purchase_ts,
-        FORMAT(MIN(order_purchase_timestamp), 'yyyy-MM') AS cohort_month
-    FROM orders_with_month
-    GROUP BY customer_key
-),
-orders_with_cohort AS (
-    SELECT
-        om.customer_key,
-        fm.cohort_month,
-        om.order_month,
+        m.cohort_month,
+        DATEFROMPARTS(CAST(LEFT(m.cohort_month,4) AS INT),
+                      CAST(RIGHT(m.cohort_month,2) AS INT), 1) AS cohort_month_start,
         DATEDIFF(MONTH,
-            DATEFROMPARTS(CAST(LEFT(fm.cohort_month,4) AS INT),
-                          CAST(RIGHT(fm.cohort_month,2) AS INT), 1),
-            DATEFROMPARTS(CAST(LEFT(om.order_month,4) AS INT),
-                          CAST(RIGHT(om.order_month,2) AS INT), 1)
-        ) AS month_offset
-    FROM orders_with_month om
-    JOIN first_month fm ON fm.customer_key = om.customer_key
+            DATEFROMPARTS(CAST(LEFT(m.cohort_month,4) AS INT),
+                          CAST(RIGHT(m.cohort_month,2) AS INT), 1),
+            DATEFROMPARTS(2018, 8, 1)
+        ) AS max_offset
+    FROM months m
 ),
-cohort_size AS (
-    SELECT cohort_month, COUNT(DISTINCT customer_key) AS size
-    FROM first_month
-    GROUP BY cohort_month
-),
-active AS (
+exploded AS (
     SELECT
-        cohort_month,
-        month_offset,
-        COUNT(DISTINCT customer_key) AS active_customers
-    FROM orders_with_cohort
-    GROUP BY cohort_month, month_offset
+        g.cohort_month,
+        g.cohort_month_start,
+        n.number AS month_offset
+    FROM grid g
+    JOIN master..spt_values n
+      ON n.type = 'P'
+     AND n.number BETWEEN 0 AND g.max_offset
 )
 INSERT INTO analytics.cohort_retention
-    (cohort_month, month_offset, cohort_size, active_customers, retention_pct)
+    (cohort_month, cohort_month_start, month_offset,
+     cohort_size, active_customers, retention_pct)
 SELECT
-    a.cohort_month,
-    a.month_offset,
-    cs.size,
-    a.active_customers,
-    CAST(100.0 * a.active_customers / cs.size AS DECIMAL(7,4))
-FROM active a
-JOIN cohort_size cs ON cs.cohort_month = a.cohort_month;
+    e.cohort_month,
+    e.cohort_month_start,
+    e.month_offset,
+    cs.cohort_size,
+    ISNULL(a.active_customers, 0),
+    CAST(100.0 * ISNULL(a.active_customers, 0) / cs.cohort_size AS DECIMAL(7,4))
+FROM exploded e
+JOIN #cohort_size cs ON cs.cohort_month = e.cohort_month
+LEFT JOIN #active a ON a.cohort_month = e.cohort_month AND a.month_offset = e.month_offset;
+GO
 
 DECLARE @cohort_count INT = (SELECT COUNT(*) FROM analytics.cohort_retention);
+DECLARE @cohort_pre2017 INT = (SELECT COUNT(*) FROM analytics.cohort_retention WHERE cohort_month = 'pre-2017');
 EXEC analytics.usp_log_build
     @step_id          = 'COHORT_RETENTION_BUILD',
-    @step_description = 'Cohort month x month_offset with cohort size and retention',
+    @step_description = 'Full triangle with zero-fill and pre-2017 sentinel',
     @object_name      = 'analytics.cohort_retention',
     @rows_written     = @cohort_count;
 GO
@@ -254,28 +364,40 @@ SELECT 'analytics.customer_rfm'      AS table_name, COUNT(*) AS rows FROM analyt
 UNION ALL SELECT 'analytics.cohort_retention', COUNT(*) FROM analytics.cohort_retention;
 GO
 
-SELECT r_score, COUNT(*) AS n FROM analytics.customer_rfm GROUP BY r_score ORDER BY r_score;
-GO
-
-SELECT m_score, COUNT(*) AS n FROM analytics.customer_rfm GROUP BY m_score ORDER BY m_score;
-GO
-
+-- RFM segments
 SELECT segment, COUNT(*) AS n
 FROM analytics.customer_rfm
 GROUP BY segment
 ORDER BY segment;
 GO
 
-SELECT f_band, COUNT(*) AS n
-FROM analytics.customer_rfm
-GROUP BY f_band
-ORDER BY f_band;
+-- Pre-2017 bucket
+SELECT cohort_month, cohort_size, active_customers
+FROM analytics.cohort_retention
+WHERE cohort_month = 'pre-2017';
 GO
 
+-- Cohort shape
 SELECT
-    COUNT(*) AS total_customers,
-    SUM(CASE WHEN f_band IN ('2','3+') THEN 1 ELSE 0 END) AS repeat_customers
-FROM analytics.customer_rfm;
+    COUNT(*) AS total_rows,
+    SUM(CASE WHEN cohort_month = 'pre-2017' THEN 1 ELSE 0 END) AS pre_2017_rows,
+    SUM(CASE WHEN cohort_month <> 'pre-2017' THEN 1 ELSE 0 END) AS matrix_rows,
+    COUNT(DISTINCT CASE WHEN cohort_month <> 'pre-2017' THEN cohort_month END) AS distinct_cohorts
+FROM analytics.cohort_retention;
+GO
+
+-- Sum of cohort sizes + pre-2017 = 94,703
+SELECT
+    (SELECT SUM(cohort_size) FROM (
+        SELECT DISTINCT cohort_month, cohort_size FROM analytics.cohort_retention
+    ) x) AS total_customers_in_matrix_and_pre2017;
+GO
+
+-- Sample of the triangle (offset 0, 1, 2)
+SELECT cohort_month, month_offset, cohort_size, active_customers, retention_pct
+FROM analytics.cohort_retention
+WHERE cohort_month = '2017-01'
+ORDER BY month_offset;
 GO
 
 SELECT step_id, object_name, rows_written
