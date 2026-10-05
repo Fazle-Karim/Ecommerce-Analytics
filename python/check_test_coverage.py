@@ -1,13 +1,18 @@
 """
 check_test_coverage.py
-Purpose: Verify that every *testable* leaf key in the canonical JSON files
-         has a matching test reference in sql/tests/*.sql.
+Purpose: For every leaf in the canonical JSON files, report:
+           - the leaf path
+           - the test name it maps to
+           - whether a test file references that test name
+         Uses an explicit LEAF_TO_TEST mapping plus an IGNORE list for
+         leaves that are not test targets (data-quality diagnostics).
 
-Uses an explicit mapping from JSON leaf → test name, plus an ignore list of
-data-quality diagnostics that don't require a test.
+         "Referenced" means a test file contains a line naming this key.
+         It does NOT mean the test currently passes — that is verified
+         separately when the test suite runs.
 
 Output:  documentation/test_coverage.md
-Exit:    non-zero if any testable leaf is uncovered
+Exit:    non-zero if any leaf has no test reference
 """
 
 import json
@@ -22,7 +27,7 @@ TESTS_DIR    = Path("sql/tests")
 OUT          = Path("documentation/test_coverage.md")
 
 # ---------------------------------------------------------------------------
-# 1. Load JSON and flatten
+# 1. Flatten JSON
 # ---------------------------------------------------------------------------
 def flatten(obj, prefix=""):
     if isinstance(obj, dict):
@@ -34,7 +39,7 @@ def flatten(obj, prefix=""):
     else:
         yield prefix, obj
 
-all_leaves = {}  # path -> value
+all_leaves = {}
 for jf in [CONTROL_JSON, RFM_JSON]:
     if not jf.exists():
         continue
@@ -47,12 +52,9 @@ for jf in [CONTROL_JSON, RFM_JSON]:
 print(f"Total JSON leaves: {len(all_leaves)}")
 
 # ---------------------------------------------------------------------------
-# 2. Explicit mapping: JSON leaf path -> test name
-#    Anything not in the mapping is either (a) in the ignore list, or
-#    (b) a real gap to be tested.
+# 2. Explicit mapping: leaf → test name (or None for structural-only)
 # ---------------------------------------------------------------------------
 LEAF_TO_TEST = {
-    # raw_level
     "raw_level.orders_row_count":              "row_count.orders",
     "raw_level.order_items_row_count":         "row_count.order_items",
     "raw_level.payments_row_count":            "row_count.payments",
@@ -71,18 +73,15 @@ LEAF_TO_TEST = {
     "raw_level.raw_sum_freight_value":         "sum.freight.clean_equals_pinned",
     "raw_level.raw_sum_payment_value":         "sum.payment.clean_equals_pinned",
 
-    # funnel
     "funnel.raw_orders":              "funnel.raw_total",
     "funnel.in_scope_status":         "funnel.in_scope_status",
     "funnel.in_scope_and_in_window":  "funnel.in_scope_and_in_window",
     "funnel.analytic_population":     "funnel.in_scope_and_in_window",
 
-    # revenue
     "revenue_on_population.gmv_item_price_only": "gmv.fact_order_items",
     "revenue_on_population.freight_charged":     "freight.fact_order_items",
     "revenue_on_population.total_customer_paid": "analytic.items_total",
 
-    # reconciliation
     "payments_reconciliation.payments_total":   "analytic.payment_total",
     "payments_reconciliation.items_total":      "analytic.items_total",
     "payments_reconciliation.net_residual":     "payment.residual",
@@ -93,7 +92,6 @@ LEAF_TO_TEST = {
     "payments_reconciliation.orders_with_larger_diff": "payment.residual",
     "payments_reconciliation.orders_compared":        "payment.residual",
 
-    # customers
     "customers.unique_customers_all_statuses":  "rfm.row_count",
     "customers.repeat_customers_all_statuses":  "rfm.repeat_customers",
     "customers.repeat_rate_all_statuses_pct":   "rfm.repeat_customers",
@@ -104,12 +102,10 @@ LEAF_TO_TEST = {
     "customers.repeat_customers_in_population": "rfm.repeat_customers",
     "customers.repeat_rate_in_population_pct":  "rfm.repeat_customers",
 
-    # late_rate
     "late_rate.denominator":   "late.denominator",
     "late_rate.late_orders":   "late.orders",
     "late_rate.late_rate_pct": "late.rate_pct",
 
-    # reviews
     "reviews.orders_with_deduped_review_all_orders":         "review.avg_all_orders",
     "reviews.average_review_score_all_orders":               "review.avg_all_orders",
     "reviews.average_review_score_delivered_in_window_late": "review.avg_late",
@@ -118,19 +114,15 @@ LEAF_TO_TEST = {
     "reviews.late_review_count_delivered_in_window":         "analytic.review_late_group",
     "reviews.on_time_review_count_delivered_in_window":      "analytic.review_on_time_group",
 
-    # delivery
     "delivery.avg_delivery_days":          "delivery.avg_delivery_days",
     "delivery.delivery_measurable_orders": "delivery.measurable_orders",
 
-    # excluded_statuses
     "excluded_statuses.payments_total": "excluded.out_of_scope_status",
 
-    # year_splits
     "year_splits.in_window_orders_2017":                   "year_splits.in_window_orders_2017",
     "year_splits.in_window_orders_2018":                   "year_splits.in_window_orders_2018",
     "year_splits.in_window_orders_2017_2018_all_statuses": "year_splits.in_window_orders_2017_2018_all_statuses",
 
-    # rfm
     "rfm.customer_count":           "rfm.row_count",
     "rfm.repeat_customers":         "rfm.repeat_customers",
     "rfm.segment_champions":        "rfm.segment_champions",
@@ -143,24 +135,17 @@ LEAF_TO_TEST = {
     "rfm.f_band_2":                 "rfm.f_band_2",
     "rfm.f_band_3_plus":            "rfm.f_band_3_plus",
 
-    # cohort
     "cohort.matrix_rows":         "cohort.matrix_rows",
     "cohort.cohort_months":       "cohort.distinct_months",
     "cohort.pre_2017_customers":  "cohort.pre_2017_size",
     "cohort.matrix_customers":    "cohort.matrix_plus_pre2017",
 
-    # reference file extras
     "segments_total":  "rfm.segments_sum",
     "f_ge_2_total":    "rfm.repeat_customers",
 }
 
-# ---------------------------------------------------------------------------
-# 3. Ignore list: JSON leaves that don't need a test
-# ---------------------------------------------------------------------------
-IGNORE_LEAVES = {
-    # Individual monthly entries are covered by the aggregate monthly test
-    # once it exists. Skip them from individual test checks.
-}
+# Leaves that don't require a test (data-quality diagnostics; used elsewhere)
+IGNORE_LEAVES = set()
 
 def is_monthly(path):
     return path.startswith("monthly_window.")
@@ -169,37 +154,12 @@ def is_top_category(path):
     return path.startswith("top_categories_gmv[")
 
 # ---------------------------------------------------------------------------
-# 4. Derive expected test names
+# 3. Derive expected test names per leaf
 # ---------------------------------------------------------------------------
-expected_keys = set()
+leaf_records = []  # (leaf, test_name, in_referenced_set)
 unmapped = []
-for path in all_leaves.keys():
-    if path in IGNORE_LEAVES:
-        continue
-    if is_monthly(path):
-        # Individual monthly leaves are covered by one data-driven test.
-        expected_keys.add("monthly.all_months")
-        continue
-    if is_top_category(path):
-        # Individual categories are covered by one data-driven test.
-        expected_keys.add("top_categories.all")
-        continue
-    if path in LEAF_TO_TEST:
-        expected_keys.add(LEAF_TO_TEST[path])
-    else:
-        unmapped.append(path)
 
-expected_keys = sorted(expected_keys)
-
-print(f"Expected test names: {len(expected_keys)}")
-if unmapped:
-    print(f"Unmapped JSON leaves (need adding to LEAF_TO_TEST or IGNORE): {len(unmapped)}")
-    for u in unmapped[:20]:
-        print(f"  - {u}")
-
-# ---------------------------------------------------------------------------
-# 5. Referenced test names in tests/*.sql
-# ---------------------------------------------------------------------------
+# Collect referenced test names first
 referenced = set()
 for tf in sorted(TESTS_DIR.glob("*.sql")):
     text = tf.read_text(encoding="utf-8")
@@ -210,25 +170,45 @@ for tf in sorted(TESTS_DIR.glob("*.sql")):
 
 print(f"Referenced test names: {len(referenced)}")
 
-# ---------------------------------------------------------------------------
-# 6. Compare
-# ---------------------------------------------------------------------------
-covered = sorted(set(expected_keys) & referenced)
-uncovered = sorted(set(expected_keys) - referenced)
+for path in sorted(all_leaves.keys()):
+    if path in IGNORE_LEAVES:
+        continue
+    if is_monthly(path):
+        leaf_records.append((path, "monthly.all_months", "monthly.all_months" in referenced))
+        continue
+    if is_top_category(path):
+        leaf_records.append((path, "top_categories.all", "top_categories.all" in referenced))
+        continue
+    if path in LEAF_TO_TEST:
+        test = LEAF_TO_TEST[path]
+        leaf_records.append((path, test, test in referenced))
+    else:
+        unmapped.append(path)
+        leaf_records.append((path, "(unmapped)", False))
 
-coverage_pct = 100.0 * len(covered) / len(expected_keys) if expected_keys else 0
+# ---------------------------------------------------------------------------
+# 4. Summary
+# ---------------------------------------------------------------------------
+leaves_with_test = [r for r in leaf_records if r[1] != "(unmapped)"]
+leaves_with_ref  = [r for r in leaf_records if r[2]]
+leaves_without_ref = [r for r in leaf_records if not r[2]]
 
-print(f"\nCovered:   {len(covered)}")
-print(f"Uncovered: {len(uncovered)}")
-print(f"Coverage:  {coverage_pct:.1f}%")
+print(f"\nLeaves with a mapped test name:      {len(leaves_with_test)}")
+print(f"Leaves whose test is referenced:     {len(leaves_with_ref)}")
+print(f"Leaves with NO test reference:       {len(leaves_without_ref)}")
+print(f"Unmapped leaves:                     {len(unmapped)}")
 
 # ---------------------------------------------------------------------------
-# 7. Report
+# 5. Report
 # ---------------------------------------------------------------------------
 lines = []
-lines.append("# Test Coverage — JSON Leaves to Test Names")
+lines.append("# Test Reference Coverage")
 lines.append("")
 lines.append(f"**Generated:** {pd.Timestamp.now()}")
+lines.append(f"**Sources:** `documentation/control_totals.json`, `documentation/rfm_cohorts_reference.json`")
+lines.append("")
+lines.append('> "Referenced" means a test file contains a line naming this test. It does not')
+lines.append("> mean the test currently passes — pass/fail is verified when the test suites run.")
 lines.append("")
 lines.append("---")
 lines.append("")
@@ -236,16 +216,24 @@ lines.append("## Summary")
 lines.append("")
 lines.append(f"| Metric | Count |")
 lines.append(f"|--------|------:|")
-lines.append(f"| JSON leaves | {len(all_leaves)} |")
-lines.append(f"| Expected test names | {len(expected_keys)} |")
-lines.append(f"| Referenced test names | {len(referenced)} |")
-lines.append(f"| Covered | {len(covered)} |")
-lines.append(f"| Uncovered | {len(uncovered)} |")
-lines.append(f"| **Coverage** | **{coverage_pct:.1f}%** |")
+lines.append(f"| JSON leaves (excluding metadata) | {len(leaf_records)} |")
+lines.append(f"| Leaves whose test is referenced in `sql/tests/*.sql` | {len(leaves_with_ref)} |")
+lines.append(f"| **Leaves with no test reference** | **{len(leaves_without_ref)}** |")
+if unmapped:
+    lines.append(f"| Leaves with no mapping | {len(unmapped)} |")
 lines.append("")
 
+if leaves_without_ref:
+    lines.append("## Leaves with no test reference")
+    lines.append("")
+    lines.append("| Leaf | Test name |")
+    lines.append("|------|-----------|")
+    for leaf, test, _ in leaves_without_ref:
+        lines.append(f"| `{leaf}` | `{test}` |")
+    lines.append("")
+
 if unmapped:
-    lines.append("## Unmapped JSON leaves")
+    lines.append("## Unmapped leaves")
     lines.append("")
     lines.append("These leaves have no entry in `LEAF_TO_TEST`. Add them to the map:")
     lines.append("")
@@ -253,30 +241,21 @@ if unmapped:
         lines.append(f"- `{u}`")
     lines.append("")
 
-if uncovered:
-    lines.append("## Uncovered test names")
-    lines.append("")
-    lines.append("These test names are expected but not referenced in `sql/tests/*.sql`:")
-    lines.append("")
-    for k in uncovered:
-        lines.append(f"- `{k}`")
-    lines.append("")
-
-lines.append("## Full mapping")
+lines.append("## Full leaf-by-leaf table")
 lines.append("")
-lines.append("| Expected test name | Referenced |")
-lines.append("|--------------------|:----------:|")
-for k in expected_keys:
-    hit = "yes" if k in referenced else "**NO**"
-    lines.append(f"| `{k}` | {hit} |")
+lines.append("| Leaf | Test name | Referenced |")
+lines.append("|------|-----------|:----------:|")
+for leaf, test, hit in leaf_records:
+    mark = "yes" if hit else "**NO**"
+    lines.append(f"| `{leaf}` | `{test}` | {mark} |")
 lines.append("")
 
 OUT.write_text("\n".join(lines), encoding="utf-8")
 print(f"\nWrote {OUT}")
 
-if uncovered or unmapped:
-    print(f"\n❌ {len(uncovered)} uncovered, {len(unmapped)} unmapped.")
+if leaves_without_ref or unmapped:
+    print(f"\n❌ {len(leaves_without_ref)} leaf/leaves without a test reference, {len(unmapped)} unmapped.")
     sys.exit(1)
 else:
-    print(f"\n✅ All {len(expected_keys)} expected test names are covered.")
+    print(f"\n✅ All {len(leaf_records)} leaves have a referenced test.")
     sys.exit(0)

@@ -64,11 +64,7 @@ SELECT 'bi.view.fact_order_items',   '1', CAST(COUNT(*) AS NVARCHAR(50)),
 FROM sys.views v JOIN sys.schemas s ON s.schema_id = v.schema_id
 WHERE s.name = 'bi' AND v.name = 'fact_order_items';
 
-INSERT INTO @results
-SELECT 'bi.view.customer_rfm',       '1', CAST(COUNT(*) AS NVARCHAR(50)),
-       CASE WHEN COUNT(*) = 1 THEN 'PASS' ELSE 'FAIL' END
-FROM sys.views v JOIN sys.schemas s ON s.schema_id = v.schema_id
-WHERE s.name = 'bi' AND v.name = 'customer_rfm';
+
 
 INSERT INTO @results
 SELECT 'bi.view.cohort_retention',   '1', CAST(COUNT(*) AS NVARCHAR(50)),
@@ -82,6 +78,11 @@ SELECT 'bi.view.cohort_pre2017',     '1', CAST(COUNT(*) AS NVARCHAR(50)),
 FROM sys.views v JOIN sys.schemas s ON s.schema_id = v.schema_id
 WHERE s.name = 'bi' AND v.name = 'cohort_pre2017';
 
+INSERT INTO @results
+SELECT 'bi.view.customer_rfm_dropped', '0', CAST(COUNT(*) AS NVARCHAR(50)),
+       CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END
+FROM sys.views v JOIN sys.schemas s ON s.schema_id = v.schema_id
+WHERE s.name = 'bi' AND v.name = 'customer_rfm';
 -- -------------------------------------------------------------------------------
 -- Row count parity with source tables
 -- -------------------------------------------------------------------------------

@@ -173,24 +173,7 @@ SELECT
 FROM analytics.fact_order_items;
 GO
 
--- -------------------------------------------------------------------------------
--- bi.customer_rfm  (kept for compatibility; may be hidden in the model)
--- -------------------------------------------------------------------------------
-IF OBJECT_ID('bi.customer_rfm', 'V') IS NOT NULL DROP VIEW bi.customer_rfm;
-GO
 
-CREATE VIEW bi.customer_rfm AS
-SELECT
-    customer_key,
-    recency_days,
-    frequency,
-    monetary,
-    r_score,
-    f_band,
-    m_score,
-    segment
-FROM analytics.customer_rfm;
-GO
 
 -- -------------------------------------------------------------------------------
 -- bi.cohort_retention  (heatmap only; excludes pre-2017 sentinel)
@@ -239,7 +222,6 @@ UNION ALL SELECT 'bi.dim_seller',         COUNT(*) FROM bi.dim_seller
 UNION ALL SELECT 'bi.dim_order',          COUNT(*) FROM bi.dim_order
 UNION ALL SELECT 'bi.fact_orders',        COUNT(*) FROM bi.fact_orders
 UNION ALL SELECT 'bi.fact_order_items',   COUNT(*) FROM bi.fact_order_items
-UNION ALL SELECT 'bi.customer_rfm',       COUNT(*) FROM bi.customer_rfm
 UNION ALL SELECT 'bi.cohort_retention',   COUNT(*) FROM bi.cohort_retention
 UNION ALL SELECT 'bi.cohort_pre2017',     COUNT(*) FROM bi.cohort_pre2017;
 GO
