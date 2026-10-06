@@ -243,7 +243,8 @@
     "segment_unclassified": 0,
     "f_band_1": 91829,
     "f_band_2": 2639,
-    "f_band_3_plus": 235
+    "f_band_3_plus": 235,
+    "repeat_rate_in_population_pct": 3.03
   },
   "cohort": {
     "cohort_months": 20,

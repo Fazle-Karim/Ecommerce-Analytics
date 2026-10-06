@@ -128,6 +128,7 @@ VALUES
     (N'year_splits.in_window_orders_2017_2018_all_statuses', N'99092'),
     (N'rfm.customer_count', N'94703'),
     (N'rfm.repeat_customers', N'2874'),
+    (N'rfm.repeat_rate_in_population_pct', N'3.03'),
     (N'rfm.segment_champions', N'1229'),
     (N'rfm.segment_loyal', N'612'),
     (N'rfm.segment_at_risk', N'1033'),
@@ -162,5 +163,5 @@ VALUES
     (N'top_categories.10.gmv', N'479650.06');
 GO
 
-PRINT 'Loaded 137 expected values into clean.test_expected_values';
+PRINT 'Loaded 138 expected values into clean.test_expected_values';
 GO

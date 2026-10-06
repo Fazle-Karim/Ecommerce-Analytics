@@ -319,6 +319,7 @@ rfm = {
     "f_band_1":                      int((per_customer["frequency"] == 1).sum()),
     "f_band_2":                      int((per_customer["frequency"] == 2).sum()),
     "f_band_3_plus":                 int((per_customer["frequency"] >= 3).sum()),
+    "repeat_rate_in_population_pct": round(100.0 * repeat_customers / total_rows, 2),
 }
 data["rfm"] = rfm
 

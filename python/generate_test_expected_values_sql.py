@@ -147,6 +147,7 @@ r2 = baseline.get("rfm", {})
 if r2:
     add("rfm.customer_count",                r2["customer_count"])
     add("rfm.repeat_customers",              r2["repeat_customers"])
+    add("rfm.repeat_rate_in_population_pct", r2["repeat_rate_in_population_pct"])
     add("rfm.segment_champions",             r2["segment_champions"])
     add("rfm.segment_loyal",                 r2["segment_loyal"])
     add("rfm.segment_at_risk",               r2["segment_at_risk"])

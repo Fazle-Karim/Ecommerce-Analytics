@@ -87,7 +87,38 @@ CREATE FUNCTION dbo.TitleCase (@input NVARCHAR(200))
 RETURNS NVARCHAR(200)
 AS
 BEGIN
+    -- 1. Replace underscores with spaces and lowercase
     DECLARE @output NVARCHAR(200) = REPLACE(LOWER(@input), '_', ' ');
+
+    -- 2. Apply acronym map (word-level replacement)
+    DECLARE @acronyms TABLE (lower_form NVARCHAR(20), upper_form NVARCHAR(20));
+    INSERT INTO @acronyms (lower_form, upper_form) VALUES
+        ('cds',  'CDs'),
+        ('dvds', 'DVDs'),
+        ('pc',   'PC'),
+        ('tv',   'TV'),
+        ('usb',  'USB'),
+        ('hdmi', 'HDMI'),
+        ('blu',  'Blu'),
+        ('ray',  'Ray');
+
+    DECLARE @low NVARCHAR(20), @up NVARCHAR(20);
+    DECLARE @acr_cursor CURSOR;
+    SET @acr_cursor = CURSOR FOR SELECT lower_form, upper_form FROM @acronyms;
+    OPEN @acr_cursor;
+    FETCH NEXT FROM @acr_cursor INTO @low, @up;
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        SET @output = REPLACE(@output, ' ' + @low + ' ', ' ' + @up + ' ');
+        IF @output = @low                SET @output = @up;
+        IF @output LIKE @low + ' %'      SET @output = @up + SUBSTRING(@output, LEN(@low) + 1, LEN(@output));
+        IF @output LIKE '% ' + @low      SET @output = LEFT(@output, LEN(@output) - LEN(@low)) + @up;
+        FETCH NEXT FROM @acr_cursor INTO @low, @up;
+    END
+    CLOSE @acr_cursor;
+    DEALLOCATE @acr_cursor;
+
+    -- 3. Title-case remaining lowercase letters after spaces
     DECLARE @i INT = 1;
     DECLARE @len INT = LEN(@output);
     DECLARE @prev_was_space BIT = 1;

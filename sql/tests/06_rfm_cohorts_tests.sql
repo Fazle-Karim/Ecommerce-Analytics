@@ -44,7 +44,17 @@ SELECT 'rfm.repeat_customers', e.expected_value, CAST(t.n AS NVARCHAR(50)),
        CASE WHEN CAST(t.n AS NVARCHAR(50)) = e.expected_value THEN 'PASS' ELSE 'FAIL' END
 FROM (SELECT COUNT(*) AS n FROM analytics.customer_rfm WHERE f_band IN ('2','3+')) t
 CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'rfm.repeat_customers';
-
+INSERT INTO @results
+SELECT 'rfm.repeat_rate_in_population_pct', e.expected_value, CAST(t.rate AS NVARCHAR(50)),
+       CASE WHEN CAST(t.rate AS DECIMAL(5,2)) = CAST(e.expected_value AS DECIMAL(5,2))
+            THEN 'PASS' ELSE 'FAIL' END
+FROM (
+    SELECT CAST(
+        100.0 * SUM(CASE WHEN f_band IN ('2','3+') THEN 1 ELSE 0 END) / COUNT(*)
+    AS DECIMAL(5,2)) AS rate
+    FROM analytics.customer_rfm
+) t
+CROSS JOIN clean.test_expected_values e WHERE e.test_name = 'rfm.repeat_rate_in_population_pct';
 -- ===============================================================================
 -- Segment counts
 -- ===============================================================================
