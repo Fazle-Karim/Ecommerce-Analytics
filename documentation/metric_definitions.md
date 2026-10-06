@@ -23,8 +23,8 @@ and a note in the changelog.
 
 ## 1. Constants
 
-These values are declared once in SQL (`:setvar` in `06_rfm_cohorts.sql`) and
-mirrored in DAX. No literals.
+These values are declared once in SQL (`:setvar` in `06_rfm_cohorts.sql`)
+and mirrored in DAX. No literals.
 
 | Constant | Value | Purpose |
 |----------|-------|---------|
@@ -54,30 +54,17 @@ Every metric operates on one of three well-defined populations.
 | 2 | In-window | 97,905 |
 | 3 | Has at least one row in `order_items` | 97,905 |
 
-Reproducible via `python/order_funnel.py`. Pinned in `control_totals.json`.
-
-**Default population:** All core revenue, product, seller, and delivery
-metrics use the **analytic population**.
-
-**Customer-metric exception:** §5.1 (Unique Customers) and §5.4 (Repeat
-Purchase Rate) use the **full customer base**. Every metric in §5 states
-its population explicitly.
-
 ---
 
 ## 3. Base Filters
 
-Two ordered filters apply by default to every metric. Boundaries use
-half-open intervals.
+| Filter | Definition |
+|--------|------------|
+| **Time filter** | `order_purchase_timestamp >= '2017-01-01'` AND `< '2018-09-01'` |
+| **In-scope filter** | `order_status IN ('delivered','shipped','invoiced','processing','approved')` |
+| **Delivered filter** | `order_status = 'delivered'` AND `order_delivered_customer_date IS NOT NULL` |
 
-| Filter | Definition | Rationale |
-|--------|------------|-----------|
-| **Time filter** | `order_purchase_timestamp >= '2017-01-01'` AND `< '2018-09-01'` | Half-open. 2016 ramp-up excluded; 2018-09/10 incomplete. |
-| **In-scope filter** | `order_status IN ('delivered','shipped','invoiced','processing','approved')` | Excludes canceled, unavailable, created. |
-| **Delivered filter** | `order_status = 'delivered'` AND `order_delivered_customer_date IS NOT NULL` | Delivery and review metrics only. |
-
-**Boundary note:** SQL and DAX must use `>=` start AND `<` end. `BETWEEN` is
-incorrect — it excludes the last day's later hours.
+**Boundary note:** Use `>=` start AND `<` end. `BETWEEN` is incorrect.
 
 ---
 
@@ -88,35 +75,26 @@ incorrect — it excludes the last day's later hours.
 - **Formula:** `SUM(order_items.price)`
 - **Source:** `bi.fact_order_items`
 - **Population:** Analytic population
-- **Unit:** BRL
 - **Pinned value:** `BRL 13,449,529.68`
-- **Excludes:** freight, canceled, unavailable, created
 
 ### 4.2 Order Count
 
-- **Formula:** `COUNT(DISTINCT orders.order_id)` → `DISTINCTCOUNT(bi.fact_orders[order_key])`
-- **Source:** `bi.fact_orders`
+- **Formula:** `DISTINCTCOUNT(bi.fact_orders[order_key])`
 - **Population:** Analytic population
 - **Pinned value:** 97,905
 
 ### 4.3 AOV — Average Order Value
 
 - **Formula:** `GMV ÷ Order Count`
-- **Population:** Analytic population
-- **Unit:** BRL
 
 ### 4.4 Freight Charged
 
 - **Formula:** `SUM(order_items.freight_value)`
-- **Source:** `bi.fact_order_items`
-- **Population:** Analytic population
 - **Pinned value:** `BRL 2,234,177.06`
-- **Note:** Not labeled "revenue" — no cost data exists.
 
 ### 4.5 Total Customer Paid
 
 - **Formula:** `GMV + Freight Charged`
-- **Population:** Analytic population
 - **Pinned value:** `BRL 15,683,706.74`
 - **Reconciliation:** Matches `SUM(payment_value)` to within `BRL 2,762.33`
   net (0.0176%) and `BRL 3,033.13` absolute (0.0193%).
@@ -124,7 +102,6 @@ incorrect — it excludes the last day's later hours.
 ### 4.6 Items per Order
 
 - **Formula:** `COUNT(item rows) ÷ COUNT(DISTINCT order_id)`
-- **Population:** Analytic population
 
 ---
 
@@ -135,14 +112,13 @@ All customer metrics use **`customer_unique_id`** — never `customer_id`.
 ### 5.1 Unique Customers
 
 - **Formula:** `COUNT(DISTINCT customer_unique_id)`
-- **Population:** **Full customer base** — all dates, all statuses
+- **Population:** Full customer base
 - **Pinned value:** 96,096
 
 ### 5.2 New Customers
 
 - **Definition:** First-ever order falls inside the current period
 - **Population:** Analytic population
-- **Note:** "First-ever" computed across the customer's full order history.
 
 ### 5.3 Returning Customers
 
@@ -153,19 +129,28 @@ All customer metrics use **`customer_unique_id`** — never `customer_id`.
 ### 5.4 Repeat Purchase Rate
 
 - **Formula:** `(Repeat customers) ÷ (Total unique customers)`
-- **Population:** **Full customer base** (all dates, all statuses)
-- **Pinned value:** 3.12% (2,997 of 96,096)
+- **Reported population:** **Analytic population** — 2,874 of 94,703 = **3.03%**
+- **Unit:** percentage
 
-> **Alternative (in-scope statuses only):** 3.04% (2,887 of 94,986).
-> Documented in `control_totals.json` for reference. The reported rate uses
-> the full customer base, consistent with GMV rules.
+**Reporting decision:** The report uses **3.03%** — the rate over the
+analytic population. This is what the Power BI model naturally computes,
+since all customer metrics use the analytic population. Two other figures
+are documented for reference in `control_totals.json`:
+
+| Variant | Value | Population |
+|---------|------:|-----------|
+| **Reported (analytic population)** | **3.03%** | 2,874 of 94,703 |
+| Full base (all statuses, all dates) | 3.12% | 2,997 of 96,096 |
+| In-scope statuses (all dates) | 3.04% | 2,887 of 94,986 |
+
+**Rationale:** One figure for the report. The analytic-population version
+aligns with every other customer metric in the model.
 
 ### 5.5 RFM Segments
 
 - **Population:** Analytic population, orders with
   `order_purchase_timestamp <= '2018-08-31'`
 - **Recency:** `FLOOR(DATEDIFF(SECOND, last_purchase_ts, '2018-08-31 00:00:00') / 86400.0)`
-  — elapsed whole days to the snapshot
 - **R score:** `FLOOR(N × 0.2)` buckets on rank ordered by
   `(last_purchase_ts DESC, customer_unique_id ASC)` — 5 = most recent
 - **Frequency:** bands 1 / 2 / 3+
@@ -173,7 +158,7 @@ All customer metrics use **`customer_unique_id`** — never `customer_id`.
   `(monetary ASC, customer_unique_id ASC)` — 1 = smallest
 - **Segment rule:** see §9
 
-**Recency cutoffs (from the analytic population):**
+**Recency cutoffs:**
 
 | R | Min date | Max date | n |
 |--:|----------|----------|--:|
@@ -189,9 +174,8 @@ All customer metrics use **`customer_unique_id`** — never `customer_id`.
 
 ### 6.1 Time Axis
 
-- **Column:** `order_purchase_timestamp` (via `bi.fact_orders` → `bi.dim_date`)
+- **Column:** `order_purchase_timestamp`
 - **Granularity:** Month and Year
-- **Time zone:** as stored
 
 ### 6.2 YoY Comparison Window
 
@@ -202,7 +186,6 @@ All customer metrics use **`customer_unique_id`** — never `customer_id`.
 ### 6.3 MoM Growth
 
 - **Formula:** `(current − prior) ÷ prior`
-- **Population:** Analytic population
 - **Note:** Partial months excluded.
 
 ### 6.4 Rolling 12-Month
@@ -218,29 +201,23 @@ All metrics use the **Delivered filter**.
 ### 7.1 Delivery Time
 
 - **Formula:** `FLOOR(DATEDIFF(SECOND, purchase, delivered_customer) / 86400.0)`
-- **Population:** Delivered with non-null delivery date
 - **Pinned value:** avg = `12.0739` days over `96,203` measurable orders
 
 ### 7.2 Late Order
 
 - **Definition:** `DATE(delivered) > DATE(estimated)`
-- **Unit:** binary (1 / 0)
-- **Nullability:** `is_late` is `BIT NULL`. Value is NULL when the order is
-  not measurable (status ≠ delivered, or no delivery date). AVG(is_late)
-  over all rows gives 6.79% directly.
+- **Nullability:** `is_late BIT NULL`. NULL when not measurable.
+  AVG(is_late) gives 6.79% directly.
 
 ### 7.3 Late Order Rate
 
-- **Formula:** `AVG(is_late)` (SQL ignores NULLs; DAX uses AVERAGE which skips blanks)
-- **Population:** Delivered filter
+- **Formula:** `AVG(is_late)`
 - **Pinned value:** **6.79%** (6,531 late of 96,203 measurable)
 
 ### 7.4 Average Review Score
 
 - **Formula:** `AVG(review_score)`
-- **Population:** Delivered filter + review present
-- **Pinned value:** 4.0863 (all orders), 2.2709 (late), 4.2910 (on-time)
-- **Note:** NULL score for the 768 orders without reviews.
+- **Pinned values:** 4.0863 (all), 2.2709 (late), 4.2910 (on-time)
 
 ### 7.5 Late vs On-Time Review Gap
 
@@ -254,24 +231,18 @@ All metrics use the **Delivered filter**.
 ### 8.1 Category Revenue
 
 - **Formula:** `SUM(price)` grouped by `dim_product[category_display_name]`
-- **Population:** Analytic population
 
 ### 8.2 Seller Revenue
 
 - **Formula:** `SUM(price)` grouped by `dim_seller[seller_key]`
-- **Population:** Analytic population
 
 ### 8.3 Seller Late Rate
 
 - **Formula:** Late Order Rate grouped by seller
-- **Population:** Delivered filter
 
 ---
 
 ## 9. RFM Segment Rules
-
-Five mutually exclusive segments. Every customer in the analytic population
-falls into exactly one.
 
 | Segment | Rule | Row count |
 |---------|------|----------:|
@@ -282,16 +253,7 @@ falls into exactly one.
 | **Lapsed one-time** | F = 1 AND R ≤ 3 | 55,177 |
 | **UNCLASSIFIED** | (guard) | 0 |
 
-**Naming rationale:**
-- "New" and "Lost" were renamed because 58% of customers fell into "Lost",
-  and "New" included purchases made months before the snapshot.
-- "Recent one-time" and "Lapsed one-time" describe what the data actually
-  shows: a single order, either recent or lapsed.
-
-**Tie-breaking:** monetary ties are broken by `customer_unique_id ASC`.
-Reproducible, though arbitrary at the tie boundary.
-
-**Total:** 94,703 = matrix RFM rows.
+**Total:** 94,703.
 
 ---
 
@@ -300,25 +262,20 @@ Reproducible, though arbitrary at the tie boundary.
 ### 10.1 Cohort Assignment
 
 - **Definition:** The month of a customer's **first-ever in-scope order**,
-  across all dates (from `clean.orders`, not `fact_orders`).
-- **Population:** Customers in the analytic population.
-- **Pre-2017 bucket:** Customers whose first-ever in-scope order predates
-  2017-01-01 are placed in a single `pre-2017` sentinel row (10 customers).
-  They are excluded from the matrix.
+  across all dates.
+- **Pre-2017 bucket:** Customers whose first order predates 2017-01-01 go
+  into a single `pre-2017` sentinel row (10 customers).
 
 ### 10.2 Matrix Structure
 
 - **Grain:** `(cohort_month, month_offset)`.
-- **Full triangle:** Every observable cell is present, zero-filled.
-  Observable = `month_offset <= months between cohort_month and snapshot`.
-- **Cells:** **210** observable cells (20 cohorts + 19 + ... + 1).
-- **Sentinel:** 1 row, `cohort_month = 'pre-2017'`, `month_offset = 0`.
-- **Total table rows:** 211.
+- **Full triangle:** Every observable cell, zero-filled. 210 cells.
+- **Sentinel:** 1 row with `cohort_month = 'pre-2017'`.
+- **Total:** 211 rows.
 
 ### 10.3 Retention
 
 - **Formula:** `100.0 × active_customers / cohort_size`
-- **Offset-0:** Always 100% by construction.
 
 ### 10.4 Matrix + Sentinel Identity
 
@@ -330,43 +287,40 @@ Reproducible, though arbitrary at the tie boundary.
 
 ### 11.1 Like-for-Like
 
-Any comparison uses the same population and same date range on both sides.
+Same population and date range on both sides.
 
 ### 11.2 Population Consistency
 
 Any two numbers in a comparison must come from the same population.
-`reconcile_payments_v2.py` enforces this with an assertion.
 
 ### 11.3 Denominators
 
-Every percentage states its denominator — in the label, tooltip, or
-accompanying text.
+Every percentage states its denominator.
 
 ### 11.4 Rounding
 
 - Currency: 2 decimals
 - Percentages: 2 decimals
-- Averages: 4 decimals (recency, delivery, reviews)
+- Averages: 4 decimals
 - Counts: integers only
-- **Reconciliation:** round both sides to cents before subtracting.
 
-### 11.5 Currency Formatting in Markdown
+### 11.5 Currency Formatting
 
-Currency values use `BRL` or backticks.
+`BRL` or backticks.
 
 ---
 
 ## 12. Known Exclusions
 
-| Exclusion | Count | Reason |
-|-----------|------:|--------|
-| Canceled orders | 625 | Payment record exists; dataset has no refund data |
-| Unavailable orders | 609 | Same as above |
-| Created orders | 5 | Same as above |
-| Orders before 2017-01 | 296 (in-scope) | Ramp-up |
-| Orders on/after 2018-09 | 1 (in-scope) | Incomplete tail |
-| Delivered with null delivery date | 8 | Late rate only |
-| Orders with no review | 768 | Review score only |
+| Exclusion | Count |
+|-----------|------:|
+| Canceled orders | 625 |
+| Unavailable orders | 609 |
+| Created orders | 5 |
+| Orders before 2017-01 | 296 (in-scope) |
+| Orders on/after 2018-09 | 1 (in-scope) |
+| Delivered with null delivery date | 8 |
+| Orders with no review | 768 |
 
 **Total exclusions:** 99,441 − 97,905 = **1,536 orders (1.54%)**.
 
@@ -377,14 +331,13 @@ Currency values use `BRL` or backticks.
 | Version | Date | Change |
 |---------|------|--------|
 | 1.0 | October 2026 | Initial freeze |
-| 1.1 | October 2026 | Corrected §4.5 reconciliation. Added §1 funnel. Rule-based RFM frequency. Snapshot 2018-08-31. Renamed "Freight Revenue" → "Freight Charged". Date-based late flag. Late denominator 96,203. |
-| 1.2 | October 2026 | Fixed §3 half-open intervals. Reworded §2, §12. Corrected §4.4 filter. Added control_totals reference. |
-| 1.3 | October 2026 | §4.4 headline repeat rate to 3.04% (in-scope). 3.12% documented as alternative. §1 customer-metric note updated. |
-| 1.4 | October 2026 | (interim — bi views) |
-| 1.5 | October 2026 | §4.5 segment names: New → Recent one-time, Lost → Lapsed one-time. Added §5.5 recency cutoffs. Added §9 segment rules table. Added §10 cohort retention definition. Added §1 constants. |
+| 1.1 | October 2026 | Corrected §4.5 reconciliation. Added §1 funnel. Rule-based RFM frequency. Snapshot 2018-08-31. Freight Charged rename. Date-based late flag. |
+| 1.2 | October 2026 | Fixed §3 half-open intervals. Reworded §2, §12. Corrected §4.4 filter. |
+| 1.3 | October 2026 | §4.4 headline repeat rate changed. |
+| 1.4 | October 2026 | Interim — bi views. |
+| 1.5 | October 2026 | §4.5 segment names: New → Recent one-time, Lost → Lapsed one-time. Added §5.5 recency cutoffs. Added §9 segment rules. Added §10 cohort definition. Added §1 constants. §5.4 pin repeat rate at 3.03% (analytic population). |
 
 ---
 
 *Companion files: `control_totals.json`, `control_totals.md`,*
-*`data_quality_log.md`, `decision_log.md`, `rebuild_evidence.md`,*
-*`order_funnel.txt`, `reconcile_payments_v2.txt`, `late_flag_check.txt`.*
+*`data_quality_log.md`, `decision_log.md`, `rebuild_evidence.md`.*

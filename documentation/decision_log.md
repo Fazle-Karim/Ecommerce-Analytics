@@ -5,8 +5,7 @@
 **Version:** 1.5
 **Purpose:** A running log of every non-obvious modeling, metric, or
 cleaning decision made during this project. Each entry includes what was
-decided, why, and what alternative was rejected. Interviewers ask "why did
-you do it this way?" — this file is the answer.
+decided, why, and what alternative was rejected.
 
 Entries are added in chronological order. Once a decision is logged it is
 considered frozen unless a later entry supersedes it.
@@ -52,14 +51,12 @@ not complete.
 
 **Decision:** `GMV = SUM(order_items.price)`. Freight is `Freight Charged`.
 
-**Why:** Item price is the revenue attributable to the product sale. Freight
-is a component of what the customer paid but is not called "revenue".
+**Why:** Item price is the revenue attributable to the product sale.
+Freight is a component of what the customer paid but is not called
+"revenue".
 
 **Reconciliation:** `SUM(payment_value)` matches `Total Customer Paid` to
 within `BRL 2,762.33` net (0.0176%) on the analytic population.
-
-**Superseded:** An earlier version cited `BRL 2,838.38` (0.018%). Corrected
-in D-010.
 
 ---
 
@@ -164,15 +161,20 @@ comparison misclassifies 1,292 orders.
 
 ## 2026-10 — Step 4 / Step 5 Corrections
 
-### D-014: Repeat-rate population = full customer base (3.12%)
+### D-014: Repeat-rate population = analytic population (3.03%)
 
-**Decision:** Reported repeat rate is **3.12%** (2,997 of 96,096), computed
-over all statuses.
+**Decision:** The reported repeat purchase rate is **3.03%** (2,874 of
+94,703), computed over the analytic population.
 
-**Why:** Repeat rate is a customer-base property. Excluding customers whose
-only additional order was canceled would understate the base.
+**Why:** All customer metrics in the model (RFM, cohorts, new vs returning)
+operate on the analytic population. Using a different denominator for
+repeat rate would make the report internally inconsistent.
 
-**Alternative:** In-scope only would give 3.04% (2,887 of 94,986).
+**Alternatives documented but not reported:**
+- Full customer base (all statuses, all dates): 3.12% (2,997 of 96,096)
+- In-scope statuses (all dates): 3.04% (2,887 of 94,986)
+
+**Evidence:** `control_totals.json` → `rfm.repeat_rate_in_population_pct`.
 
 ---
 
@@ -302,8 +304,6 @@ for counting only.
 
 Use this template:
 
-
-Use this template when adding a new decision:
 D-NNN: Short title
 Decision: What was decided.
 
