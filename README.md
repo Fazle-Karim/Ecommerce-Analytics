@@ -31,7 +31,7 @@ row-level security.
 
 <p align="center">
   <img src="https://github.com/Fazle-Karim/Ecommerce-Analytics/blob/main/screenshots/Executive_Overview.png" width="49%" alt="Executive Overview">
-  <img src="screenshots/02_sales_analysis.png" width="49%" alt="Sales Analysis">
+  <img src="https://github.com/Fazle-Karim/Ecommerce-Analytics/blob/main/screenshots/Sales_Analysis.png" width="49%" alt="Sales Analysis">
 </p>
 <p align="center">
   <img src="https://github.com/Fazle-Karim/Ecommerce-Analytics/blob/main/screenshots/Customer%20Analytics.png" width="49%" alt="Customer Analytics">
