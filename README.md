@@ -30,16 +30,16 @@ row-level security.
 <!-- Edit the file names below to match the images in the screenshots/ folder. -->
 
 <p align="center">
-  <img src="screenshots/01_executive_overview.png" width="49%" alt="Executive Overview">
+  <img src="https://github.com/Fazle-Karim/Ecommerce-Analytics/blob/main/screenshots/Executive_Overview.png" width="49%" alt="Executive Overview">
   <img src="screenshots/02_sales_analysis.png" width="49%" alt="Sales Analysis">
 </p>
 <p align="center">
-  <img src="screenshots/03_customer_analytics.png" width="49%" alt="Customer Analytics">
-  <img src="screenshots/04_cohort_retention.png" width="49%" alt="Cohort Retention">
+  <img src="https://github.com/Fazle-Karim/Ecommerce-Analytics/blob/main/screenshots/Customer%20Analytics.png" width="49%" alt="Customer Analytics">
+  <img src="https://github.com/Fazle-Karim/Ecommerce-Analytics/blob/main/screenshots/Cohort%20Retention.png" width="49%" alt="Cohort Retention">
 </p>
 <p align="center">
-  <img src="screenshots/05_delivery_satisfaction.png" width="49%" alt="Delivery and Satisfaction">
-  <img src="screenshots/06_model_view.png" width="49%" alt="Data model">
+  <img src="https://github.com/Fazle-Karim/Ecommerce-Analytics/blob/main/screenshots/Delivery_and_Satisfaction.png" width="49%" alt="Delivery and Satisfaction">
+  <img src="https://github.com/Fazle-Karim/Ecommerce-Analytics/blob/main/screenshots/Data%20Model.png" width="49%" alt="Data model">
 </p>
 
 A PDF export of the full report is in `documentation/Ecommerce_Report.pdf`.
